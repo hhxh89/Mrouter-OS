@@ -2,6 +2,35 @@
 
 Mrouter-OS is a package-first OpenWrt 25.12.5 router experience. It keeps OpenWrt underneath, but replaces the everyday management experience with a simpler Mrouter interface for Internet, clients, VPN, protection, services and advanced administration.
 
+## Quick Install — OpenWrt 25.12.5 x86-64
+
+Run as `root` on a supported OpenWrt 25.12.5 x86-64 router:
+
+```bash
+wget -O /tmp/install-mrouter.sh \
+  https://raw.githubusercontent.com/hhxh89/Mrouter-OS/main/install-mrouter.sh
+
+sh /tmp/install-mrouter.sh
+```
+
+The installer:
+
+- verifies that it is running on OpenWrt 25.12.5 x86-64;
+- downloads the official Mrouter-OS v1.0.0 release packages from GitHub Releases;
+- verifies the pinned `SHA256SUMS` file and all five APK package checksums;
+- refreshes the configured OpenWrt package indexes so dependencies can be resolved;
+- installs `mrouter-core`, `luci-app-mrouter`, `luci-theme-mrouter`, `mrouter-setup` and `mrouter-os` together;
+- cleans up temporary download files automatically;
+- does not automatically run the Mrouter first-run network setup.
+
+Mrouter is designed not to silently rewrite the router's existing WAN/LAN, DHCP, firewall, VLAN or IP configuration during package installation. Network changes remain an explicit setup action.
+
+> The installer is intentionally pinned to the stable `v1.0.0` release rather than downloading arbitrary files from the latest development source.
+
+### Manual install
+
+If you prefer to inspect and install the release packages yourself, download the five APK files and `SHA256SUMS` from the [v1.0.0 release](https://github.com/hhxh89/Mrouter-OS/releases/tag/v1.0.0), verify the checksums, then install the APKs together with `apk add --allow-untrusted`.
+
 ## v1 principles
 
 - Installing Mrouter **does not silently rewrite WAN/LAN, DHCP, firewall, VLAN or IP settings**.
