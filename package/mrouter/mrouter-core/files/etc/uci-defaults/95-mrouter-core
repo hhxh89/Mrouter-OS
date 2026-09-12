@@ -14,7 +14,7 @@ if [ "$(uci -q get mrouter.system.initialized)" = 1 ]; then
 fi
 
 uci set mrouter.system.version='1.0.0'
-uci set mrouter.system.channel='candidate'
+uci set mrouter.system.channel='stable'
 uci set mrouter.system.schema='1202'
 uci set mrouter.system.initialized='1'
 uci set mrouter.system.setup_complete='0'

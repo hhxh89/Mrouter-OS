@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 candidate
+## 1.0.0
 
 - Converted Mrouter to a package-first five-package architecture with an explicit safe setup package and meta-package.
 - Removed destructive automatic WAN/LAN defaults; existing OpenWrt networking is preserved unless the user explicitly chooses a setup profile.

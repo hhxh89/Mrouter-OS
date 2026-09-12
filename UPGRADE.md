@@ -2,7 +2,7 @@
 
 Mrouter-OS is package-first.
 
-For the first v1.0.0 candidate test, use a **clean OpenWrt 25.12.5 installation**. Earlier test packages used version `12.0.0_rc3`, which sorts above `1.0.0`; rolling VM109 back to its clean snapshot is safer than forcing an APK version downgrade.
+For installation or upgrade testing, use a clean OpenWrt 25.12.5 system where possible and create a configuration backup or snapshot before installing Mrouter.
 
 For later v1 updates, upgrade the five Mrouter APKs together and run `/usr/libexec/mrouter-migrate`. Migrations must remain idempotent and preserve user network, DNS, VPN, PBR, IoT and service choices.
 

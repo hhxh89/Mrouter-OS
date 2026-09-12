@@ -27,7 +27,7 @@ Network Settings provides Port Assignment, Networks, DHCP & DNS, Firewall, Routi
 Use `JOBS=4 ./build-packages.sh ~/openwrt-x86/source`. Expected output is `~/mrouter-v1-packages/` with five `1.0.0-r1` APKs and `SHA256SUMS`.
 
 ## Testing VM
-VM109 expected topology: LAN eth0 192.168.11.251/24; WAN eth1 10.109.0.2/24; default gateway 10.109.0.1. A clean OpenWrt 25.12.5 Proxmox snapshot exists and should be used for fresh v1 tests because older RC packages used a numerically higher 12.x version.
+Release testing should use a disposable two-interface OpenWrt 25.12.5 system with a snapshot or equivalent rollback point before package installation.
 
 ## Release status
-This source is a **1.0.0 candidate**, not yet a production-stable release, until APK compilation and VM smoke tests pass.
+Mrouter-OS v1.0.0 completed package compilation, clean-install testing and reboot-persistence testing before promotion to the stable release.

@@ -95,7 +95,7 @@ done
 
 # Prevent regressions for bugs found during RC testing.
 grep -Fq "grep -Fq '|'" package/mrouter/mrouter-core/files/usr/libexec/mrouter-services || { echo 'Local Services name-validation fix missing' >&2; FAIL=1; }
-grep -q "MROUTER_CHANNEL=\"candidate\"" package/mrouter/mrouter-core/files/etc/mrouter-release || { echo 'Release channel is not candidate' >&2; FAIL=1; }
+grep -q "MROUTER_CHANNEL=\"stable\"" package/mrouter/mrouter-core/files/etc/mrouter-release || { echo 'Release channel is not stable' >&2; FAIL=1; }
 
 [ "$FAIL" = 0 ] || exit 1
 echo 'Mrouter-OS v1.0.0 source validation: OK'

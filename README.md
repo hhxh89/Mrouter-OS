@@ -21,7 +21,7 @@ package/mrouter/
 └── mrouter-os/           # meta-package
 ```
 
-All packages use version `1.0.0`. This source bundle is a **v1.0.0 candidate** until its APKs have compiled and passed the VM109 smoke test.
+All packages use version `1.0.0`. This is the stable Mrouter-OS v1.0.0 release for OpenWrt 25.12.5.
 
 ## Build only the Mrouter packages
 

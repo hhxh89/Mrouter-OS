@@ -1,14 +1,19 @@
-# Testing Mrouter-OS v1.0.0 candidate
+# Testing Mrouter-OS v1.0.0
 
 Use a disposable router/VM and keep a hypervisor snapshot before installation.
 
-## VM109 expected test network
+## Recommended test environment
 
-```text
-LAN: eth0 -> 192.168.11.251/24
-WAN: eth1 -> 10.109.0.2/24
-Gateway: 10.109.0.1
-```
+Use a disposable two-interface OpenWrt 25.12.5 VM or supported physical router.
+
+Before installation:
+
+- record the existing LAN and WAN configuration;
+- create a configuration backup or VM snapshot;
+- confirm Internet and DNS connectivity;
+- verify the router is reachable through a management interface.
+
+After installation, verify that existing networking remains unchanged unless a setup change was explicitly requested.
 
 ## Install test
 

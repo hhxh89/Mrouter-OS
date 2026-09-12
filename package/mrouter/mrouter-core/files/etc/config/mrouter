@@ -1,6 +1,6 @@
 config system 'system'
 	option version '1.0.0'
-	option channel 'rc'
+	option channel 'stable'
 	option schema '1202'
 	option initialized '0'
 

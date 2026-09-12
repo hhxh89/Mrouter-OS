@@ -2,14 +2,14 @@ bcd643ff975db764459e5ddc7f73f6ac2b63ff4801151093e74aa5170517dbe8  ./.gitignore
 89406a6eae5724c454ca878b68fa7acd99e71f44420e4d2988175783f978d9df  ./ARCHITECTURE.md
 f635e5d5b5786141a2123002f3cb0e2fe7c0ba29c025fa542035cdedfd188693  ./AUDIT.md
 dffcf2b6af441443d05bac7b1558f4877562afb712aa102a9a3cdde350c6a5e0  ./BUILD.md
-d6471d5c70a3fa681051837e5ab95dd42b0377d163be26c42b88f5bbdd61b88d  ./CHANGELOG.md
+1f0b6c6d7280dcd327ab6b03376912617450f6994be983493749309641062cd1  ./CHANGELOG.md
 cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30  ./LICENSE
-4e957dd26802852c145b20c7a055ddbc35601eacd1bdd6ea66a941337df7e207  ./NEXT_STEPS.md
-fac0c35743219734f19ce260fc2bde20ad23ab5d279fa2bcbf441f6de9d03b57  ./PROJECT_HANDOFF.md
-fb6f1ed3d9596208fbb2c2d24da983654d782814abc07dd72a047aab1c18a9f2  ./README.md
-ae8760b5f1fe5a49be5eefbcb50c39d96b1d80f68eecfef55eac5b6a67351c63  ./SECURITY.md
-a35ac245943c347829c6651a85c35858612a4af283e281e3985eb288104a8dff  ./TESTING.md
-40d70cfc4d386d6f172d3b63c012136efbc62e0b5675a3edbf1a0b17afb777fa  ./UPGRADE.md
+adb2dda09e62cc1549906e0218486bc54992f334434e6783adb8eed64a0c53c8  ./NEXT_STEPS.md
+dbdee2a64c7184826d5157d0dee5424187238c7e4d803ac185d838d957c201c9  ./PROJECT_HANDOFF.md
+e855c4668a128b2001f406faeacc0edd57d652be7e4aa526761d77930c98402e  ./README.md
+14bc9272551e197d5429bb93e3695a2f6979fa22d2a641c06e72ef43cdc6ca46  ./SECURITY.md
+ed4df7278119b9af3372a65201ed7e0eff22eed42afa2e5a7f50b6b0d62236b8  ./TESTING.md
+79a530107c57476f7713c4b946b5e855e08f529860f203cdf7d6a7e15b8ba573  ./UPGRADE.md
 59854984853104df5c353e2f681a15fc7924742f9a2e468c29af248dce45ce03  ./VERSION
 ebe1c3ad1d888da73e0e5bfe5c8cf4716fa90b2db416ab5c7ead694b5f9e934e  ./build-packages.sh
 7b6db82f6c4edc730c7934078397529ca20efc571ff98d254878b6d73cef3772  ./build-v1.sh
@@ -61,7 +61,7 @@ adb80441fb34aab9a7fa5c6ec3e1517e6244778fedbc52ad868ae3c52af01613  ./package/mrou
 700db44e1de2561e4b0c4948d655a5ec5c3bb8d45d661926f096e80dc656ff34  ./package/mrouter/luci-theme-mrouter/ucode/template/themes/mrouter/header.ut
 6606b74f15359f6149fd3d7be2d7a53323c241c5a8bc0477e88b75efd033cb4f  ./package/mrouter/luci-theme-mrouter/ucode/template/themes/mrouter/sysauth.ut
 4d05690293efb8c48b55d57db70f11c7efe0a5f1038d540f8cb9655e34a819f0  ./package/mrouter/mrouter-core/Makefile
-fc21d94bdb47eb6970d1be1ed575b342af416bf7ba652c33cd611173474177b7  ./package/mrouter/mrouter-core/files/etc/config/mrouter
+37105db3a66e81541536c60e8e6ffa6804281a7c086c21cc8d123d8c148629f1  ./package/mrouter/mrouter-core/files/etc/config/mrouter
 90cfef95069934533ab9c65df846c15dcd2dc24fd8090ad777bb0170c9394169  ./package/mrouter/mrouter-core/files/etc/config/mrouterddns
 dabd15e341709667c80f457f46e2c7ac62477cf9fb6685b2fda8d9ac874fddb1  ./package/mrouter/mrouter-core/files/etc/config/mrouterfilter
 495e6a2ccea5baaa20e6272ce08e590e4285e4855988b64919ee1e3909902e1e  ./package/mrouter/mrouter-core/files/etc/config/mrouterparental
@@ -73,8 +73,8 @@ ab31d3f4ef2b1998d60d5156d4d2328f7b916070f35b1565691fc4a52fdd510b  ./package/mrou
 f97488c01fcae5b2b8c5372d766e36aa09e79c5b262fb6ed397b9db378205733  ./package/mrouter/mrouter-core/files/etc/init.d/mrouter-parental
 f9354906114080fd0dfd7f90a38459fd3144e6d2dcf6f631feb926715fb811cb  ./package/mrouter/mrouter-core/files/etc/init.d/mrouter-policy-monitor
 e7d4728dea94299c722c2ea87addd5c7ba75298de62d9912a15d4b471dd683aa  ./package/mrouter/mrouter-core/files/etc/init.d/mrouter-ttyd
-b291a4186eb88176f589c346ed8e146e55905ac09ba1010aa624eebe5c54e44f  ./package/mrouter/mrouter-core/files/etc/mrouter-release
-95615b039be22023b3de01bc9ad83a84f807d7f56b662cf993df5b8fd3fda691  ./package/mrouter/mrouter-core/files/etc/uci-defaults/95-mrouter-core
+2c155ebd9b7fd1a2a3e81e260ab7d2b326f8ef562b9846dbbd7fa5b5e90ae416  ./package/mrouter/mrouter-core/files/etc/mrouter-release
+396bc6524997038502d978c50a7fe57bd50f04d98eded2e561996bbc3fcb594c  ./package/mrouter/mrouter-core/files/etc/uci-defaults/95-mrouter-core
 af42da21eb02abbf1ce028f8f3325ed9ef6024da11f5091788eff97d6effe8dd  ./package/mrouter/mrouter-core/files/usr/libexec/mrouter-adguard
 7d3f42721b02e6085ecc59aedc8bdb84956d919a8b4f530e0e6d4412085d9ee1  ./package/mrouter/mrouter-core/files/usr/libexec/mrouter-advanced
 4798ef350a5acc2cd712a306c8271f467d66e8740e4479c8c62b4e3f41a5ff14  ./package/mrouter/mrouter-core/files/usr/libexec/mrouter-client-action
@@ -85,7 +85,7 @@ f41e42ca894a7cd66bdce177320c4de494997c1b6039cf5f79e19417222f4b69  ./package/mrou
 0c4be02b249bd59d863eab75e24cda98325a5cc1b37b9c75b9222639962f25c1  ./package/mrouter/mrouter-core/files/usr/libexec/mrouter-ddns-loop
 e7b7cc64de29dd656fcb391ec3fdaf27a053704db757cbe02b8ccee2020bd4b1  ./package/mrouter/mrouter-core/files/usr/libexec/mrouter-internet-info
 7f7947644bebdba3857c3eebe0c1160726682a926ec025a0b1573976f56bb494  ./package/mrouter/mrouter-core/files/usr/libexec/mrouter-iot-info
-ae0ec8e5319b35b8b51a09b665fe8298071f7ae4e8b38a6107f23c5217750b02  ./package/mrouter/mrouter-core/files/usr/libexec/mrouter-migrate
+bc1f9786861c123f96ed45de997ee087899efb3f7713ce23d2502dcf246dbdd6  ./package/mrouter/mrouter-core/files/usr/libexec/mrouter-migrate
 ae4399849d546f0a773b8badd66b1f435db1bfad3bb3f2934097d2191d8b9e9a  ./package/mrouter/mrouter-core/files/usr/libexec/mrouter-openvpn
 55d8ad92d48db9f1704edd2df7623dc8e15f2c02cf0474eb8e851ef02e538e88  ./package/mrouter/mrouter-core/files/usr/libexec/mrouter-parental
 b4c40b324c417b244b8649dccf58a6f23af7ed489cc817ab8ac02bf66bf4f3aa  ./package/mrouter/mrouter-core/files/usr/libexec/mrouter-parental-loop
@@ -112,5 +112,4 @@ e14df355f0920139c88fc3006fcff8763f54ab1af58577865dc7acde8f316b8b  ./package/mrou
 a2468a942a6e050006298092d75c3d5bda84cf44619ec8d9f859429818c39a61  ./package/mrouter/mrouter-setup/htdocs/luci-static/resources/view/mrouter/setup.js
 f5a3c864564b079f490c7857bb8853bb251be8b643aafadf54159412a2e41871  ./package/mrouter/mrouter-setup/root/usr/share/luci/menu.d/mrouter-setup.json
 5eb2a5449ae178772c9517623897e58c05ffa8325dab7ab22ca6acde3694c947  ./package/mrouter/mrouter-setup/root/usr/share/rpcd/acl.d/mrouter-setup.json
-b453d994bdbfb607459370a058389840ed8ce747f4778ffc03052a29f923e57e  ./validate-source.sh
-9ac8ef36b2428fbb5664b612fe0eff235192ec2f2e9f672f23bf53ba8eab304f  ./vm109-lab-setup.sh
+ffaee22a10d031fecf627853e340fb542eba874bc66c73e195f751024027db77  ./validate-source.sh

@@ -15,4 +15,4 @@
 - AdGuard Home stays in front of dnsmasq-full only when its upstream has been explicitly changed to the local dnsmasq layer, preserving PBR/domain-filter semantics.
 - DPI/NetifyD is omitted from the stable base image to reduce attack surface, CPU overhead and external signature dependencies.
 - Unused privileged web apps and network daemons are omitted rather than merely hidden.
-- The uploaded VM108 backup is confidential and must never be committed. It contains host keys, password hashes and VPN/Tailscale state.
+- Router backups and runtime state must never be committed. This includes password hashes, SSH host keys, VPN private keys, Tailscale state, API tokens and service credentials.
