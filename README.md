@@ -23,7 +23,15 @@ The installer:
 - cleans up temporary download files automatically;
 - does not automatically run the Mrouter first-run network setup.
 
-Mrouter is designed not to silently rewrite the router's existing WAN/LAN, DHCP, firewall, VLAN or IP configuration during package installation. Network changes remain an explicit setup action.
+Mrouter is designed not to silently rewrite the router's existing WAN/LAN addressing, DHCP serving state, firewall zones, VLANs or interface assignments during package installation. Network topology changes remain an explicit setup action.
+
+### DNS behavior during installation
+
+Mrouter-OS v1.0.0 includes encrypted-DNS support through OpenWrt's `https-dns-proxy` package. When that dependency is installed, OpenWrt may update the existing dnsmasq configuration in `/etc/config/dhcp` so DNS requests are forwarded to local DNS-over-HTTPS proxy listeners (for example `127.0.0.1#5053` and `127.0.0.1#5054`) and may set `noresolv=1`.
+
+This means the install can change **DNS forwarding behavior**, even though Mrouter itself does not replace the router's WAN/LAN addressing, DHCP server enable/disable state, firewall topology, VLANs or interface assignments. This is intentional in v1.0.0 so encrypted DNS support is available immediately after installation.
+
+If you already use a custom DNS setup, review or back up `/etc/config/dhcp` before installing so you can compare the DNS-related changes afterwards.
 
 > The installer is intentionally pinned to the stable `v1.0.0` release rather than downloading arbitrary files from the latest development source.
 
@@ -33,7 +41,8 @@ If you prefer to inspect and install the release packages yourself, download the
 
 ## v1 principles
 
-- Installing Mrouter **does not silently rewrite WAN/LAN, DHCP, firewall, VLAN or IP settings**.
+- Installing Mrouter **does not silently rewrite WAN/LAN addressing, DHCP serving state, firewall topology, VLANs or interface assignments**.
+- Installing the encrypted-DNS dependency may update dnsmasq DNS-forwarding settings in `/etc/config/dhcp`; this is documented behavior in v1.0.0.
 - First-run setup is explicit. Existing OpenWrt users can choose **Keep Current OpenWrt Network**.
 - Everyday pages use plain-language controls; **Expert LuCI** remains available for unusual or low-level configurations.
 - UI, theme and backend changes are delivered as APK packages whenever possible. Full firmware builds are reserved for base/kernel/image changes.
