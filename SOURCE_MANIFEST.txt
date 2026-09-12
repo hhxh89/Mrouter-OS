@@ -6,7 +6,7 @@ dffcf2b6af441443d05bac7b1558f4877562afb712aa102a9a3cdde350c6a5e0  ./BUILD.md
 cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30  ./LICENSE
 adb2dda09e62cc1549906e0218486bc54992f334434e6783adb8eed64a0c53c8  ./NEXT_STEPS.md
 dbdee2a64c7184826d5157d0dee5424187238c7e4d803ac185d838d957c201c9  ./PROJECT_HANDOFF.md
-e855c4668a128b2001f406faeacc0edd57d652be7e4aa526761d77930c98402e  ./README.md
+5a8bccaaa1b00528d0b34e0b8895235e7a0dd3e93b9262ec3b787b1a022d243e  ./README.md
 14bc9272551e197d5429bb93e3695a2f6979fa22d2a641c06e72ef43cdc6ca46  ./SECURITY.md
 ed4df7278119b9af3372a65201ed7e0eff22eed42afa2e5a7f50b6b0d62236b8  ./TESTING.md
 79a530107c57476f7713c4b946b5e855e08f529860f203cdf7d6a7e15b8ba573  ./UPGRADE.md
@@ -15,6 +15,7 @@ ebe1c3ad1d888da73e0e5bfe5c8cf4716fa90b2db416ab5c7ead694b5f9e934e  ./build-packag
 7b6db82f6c4edc730c7934078397529ca20efc571ff98d254878b6d73cef3772  ./build-v1.sh
 a8d6f97b03e8f68e9ad16bc099c0c736669803bc29f72662be5b236f3c35b8e2  ./build/mrouter-v1.diffconfig
 e632d4bbac5c1c300b95ad7ee93eb767db4af06fe2d429e80228f007e2ebea21  ./install-into-openwrt.sh
+d6fb8308b47409454db11d1dfd2b7cebf691705f8417f80abff2c21b8c6f2a8f  ./install-mrouter.sh
 608ba92556899cc48d3d321dae9cb5e4cb0575d80f38c0fed5e3424031faa2b6  ./package/mrouter/luci-app-mrouter/Makefile
 dd8b0ffd8bacae775c0d73a253a2b1a075bb892f280db42155fbd8a0e50f3d84  ./package/mrouter/luci-app-mrouter/htdocs/luci-static/resources/view/mrouter/adguard.js
 08c53f509c22e5ab00484103ba86e210399b40642ee40c47d817b03d3baede4f  ./package/mrouter/luci-app-mrouter/htdocs/luci-static/resources/view/mrouter/admin-backup.js
