@@ -1,0 +1,639 @@
+#!/bin/sh
+
+
+STATE="/tmp/mrouter-connectivity.state"
+PUBLIC_CACHE="/tmp/mrouter-public-ip"
+
+
+json_escape() {
+
+    printf '%s' "$1" |
+    sed \
+        -e 's/\\/\\\\/g' \
+        -e 's/"/\\"/g' \
+        -e ':a;N;$!ba;s/\n/ /g'
+}
+
+
+[ "$1" = "refresh" ] &&
+    rm -f "$PUBLIC_CACHE"
+
+
+DEFAULT_LINE="$(
+    ip -4 route show default 2>/dev/null |
+    head -n1
+)"
+
+
+DEFAULT_DEV="$(
+    printf '%s\n' "$DEFAULT_LINE" |
+    awk '
+    {
+        for (i=1; i<=NF; i++) {
+            if ($i == "dev" && i < NF) {
+                print $(i+1)
+                exit
+            }
+        }
+    }'
+)"
+
+
+GATEWAY="$(
+    printf '%s\n' "$DEFAULT_LINE" |
+    awk '
+    {
+        for (i=1; i<=NF; i++) {
+            if ($i == "via" && i < NF) {
+                print $(i+1)
+                exit
+            }
+        }
+    }'
+)"
+
+
+LOCAL_IP=""
+
+if [ -n "$DEFAULT_DEV" ]; then
+
+    LOCAL_IP="$(
+        ip -4 addr show dev "$DEFAULT_DEV" 2>/dev/null |
+        awk '/inet / {
+            print $2
+            exit
+        }' |
+        cut -d/ -f1
+    )"
+fi
+
+
+DNS="$(
+    awk '
+    /^nameserver / {
+        print $2
+        exit
+    }' \
+    /tmp/resolv.conf.d/resolv.conf.auto \
+    2>/dev/null
+)"
+
+
+[ -n "$DNS" ] || DNS="$(
+    awk '
+    /^nameserver / {
+        print $2
+        exit
+    }' \
+    /etc/resolv.conf \
+    2>/dev/null
+)"
+
+
+
+# ----------------------------------------------------------------------
+# LAN / WAN device information
+# ----------------------------------------------------------------------
+
+WANDEV="$(
+    uci -q get network.wan.device
+)"
+
+[ -n "$WANDEV" ] ||
+WANDEV="$(
+    uci -q get network.wan.ifname
+)"
+
+
+LANDEV="$(
+    uci -q get network.lan.device
+)"
+
+[ -n "$LANDEV" ] ||
+LANDEV="$(
+    uci -q get network.lan.ifname
+)"
+
+LAN_IP="$(
+    ubus call network.interface.lan status 2>/dev/null |
+    jsonfilter -e '@["ipv4-address"][0].address' 2>/dev/null | head -n1
+)"
+[ -n "$LAN_IP" ] || LAN_IP="$(uci -q get network.lan.ipaddr)"
+
+
+LAN_PORTS=""
+
+
+if [ -n "$LANDEV" ]; then
+
+    for S in $(
+        uci show network 2>/dev/null |
+        sed -n \
+        's/^network\.\([^.=]*\)=device$/\1/p'
+    ); do
+
+        NAME="$(
+            uci -q get "network.$S.name"
+        )"
+
+        if [ "$NAME" = "$LANDEV" ]; then
+
+            LAN_PORTS="$(
+                uci -q get "network.$S.ports"
+            )"
+
+            break
+        fi
+
+    done
+
+fi
+
+
+
+port_role() {
+
+    P="$1"
+
+    if [ "$P" = "$WANDEV" ]; then
+        echo "WAN"
+        return
+    fi
+
+
+    for LP in $LAN_PORTS; do
+
+        if [ "$P" = "$LP" ]; then
+            echo "LAN"
+            return
+        fi
+
+    done
+
+
+    if [ "$P" = "$LANDEV" ]; then
+        echo "LAN"
+        return
+    fi
+
+
+    if [ "$LANDEV" = "br-lan" ] &&
+       [ "$DEFAULT_DEV" = "br-lan" ]; then
+
+        echo "LAN"
+        return
+    fi
+
+
+    echo "Ethernet"
+}
+
+
+
+max_speed() {
+
+    DEV="$1"
+
+
+    MAX="$(
+        ethtool "$DEV" 2>/dev/null |
+        grep -oE '[0-9]+base' |
+        sed 's/base//' |
+        sort -n |
+        tail -n1
+    )"
+
+
+    if [ -n "$MAX" ]; then
+        echo "${MAX} Mbps"
+        return
+    fi
+
+
+    DRIVER="$(
+        ethtool -i "$DEV" 2>/dev/null |
+        awk '/^driver:/ {
+            print $2
+            exit
+        }'
+    )"
+
+
+    case "$DRIVER" in
+
+        virtio_net)
+            echo "Virtual"
+            ;;
+
+        *)
+            echo "Unknown"
+            ;;
+    esac
+}
+
+
+
+current_speed() {
+
+    DEV="$1"
+
+
+    SPEED="$(
+        ethtool "$DEV" 2>/dev/null |
+        awk -F': ' '
+        /^Speed:/ {
+            print $2
+            exit
+        }'
+    )"
+
+
+    case "$SPEED" in
+
+        ""|"Unknown!"|"Unknown")
+            DRIVER="$(
+                ethtool -i "$DEV" 2>/dev/null |
+                awk '/^driver:/ {
+                    print $2
+                    exit
+                }'
+            )"
+
+            if [ "$DRIVER" = "virtio_net" ]; then
+                echo "Virtual"
+            else
+                echo "Unknown"
+            fi
+            ;;
+
+        *)
+            echo "$SPEED"
+            ;;
+    esac
+}
+
+
+
+# ----------------------------------------------------------------------
+# Connection type
+# ----------------------------------------------------------------------
+
+case "$DEFAULT_DEV" in
+
+    ppp*|pppoe*)
+        TYPE="PPPoE"
+        ;;
+
+    tailscale*|wg*)
+        TYPE="VPN"
+        ;;
+
+    br-*)
+        TYPE="Ethernet bridge"
+        ;;
+
+    eth*|en*)
+        TYPE="Ethernet"
+        ;;
+
+    "")
+        TYPE="No route"
+        ;;
+
+    *)
+        TYPE="$DEFAULT_DEV"
+        ;;
+esac
+
+
+
+# ----------------------------------------------------------------------
+# Uptime
+# ----------------------------------------------------------------------
+
+UPTIME="$(
+    cut -d. -f1 /proc/uptime 2>/dev/null
+)"
+
+case "$UPTIME" in
+    ""|*[!0-9]*)
+        UPTIME=0
+        ;;
+esac
+
+
+
+# ----------------------------------------------------------------------
+# Internet online / offline state
+# ----------------------------------------------------------------------
+
+INET_STATE=""
+INET_SINCE=0
+
+
+if [ -r "$STATE" ]; then
+
+    INET_STATE="$(
+        sed -n 's/^status=//p' "$STATE" |
+        head -n1
+    )"
+
+    INET_SINCE="$(
+        sed -n 's/^since=//p' "$STATE" |
+        head -n1
+    )"
+
+fi
+
+
+NOW="$(date +%s)"
+
+
+case "$INET_SINCE" in
+
+    ""|*[!0-9]*)
+        INET_SINCE="$NOW"
+        ;;
+esac
+
+
+if [ "$INET_STATE" = "online" ]; then
+
+    ONLINE=true
+
+elif [ "$INET_STATE" = "offline" ]; then
+
+    ONLINE=false
+
+else
+
+    if ping -c 1 -W 1 1.1.1 >/dev/null 2>&1 ||
+       curl -4 -fsS --connect-timeout 2 --max-time 4 -o /dev/null \
+           https://connectivitycheck.gstatic.com/generate_204 >/dev/null 2>&1; then
+        ONLINE=true
+        INET_STATE="online"
+    else
+        ONLINE=false
+        INET_STATE="offline"
+    fi
+
+    INET_SINCE="$NOW"
+
+fi
+
+
+INET_DURATION=$((NOW - INET_SINCE))
+
+[ "$INET_DURATION" -ge 0 ] 2>/dev/null ||
+    INET_DURATION=0
+
+
+
+# ----------------------------------------------------------------------
+# Public IP
+# ----------------------------------------------------------------------
+
+CACHE_TIME="$(
+    stat -c %Y "$PUBLIC_CACHE" 2>/dev/null ||
+    echo 0
+)"
+
+
+if [ "$ONLINE" = true ] &&
+   {
+       [ ! -s "$PUBLIC_CACHE" ] ||
+       [ $((NOW - CACHE_TIME)) -gt 60 ]
+   }; then
+
+    PUBLIC="$(
+        curl -4 -fsS \
+            --max-time 4 \
+            https://api.ipify.org \
+            2>/dev/null
+    )"
+
+
+    [ -n "$PUBLIC" ] ||
+    PUBLIC="$(
+        curl -6 -fsS \
+            --max-time 4 \
+            https://api64.ipify.org \
+            2>/dev/null
+    )"
+
+
+    [ -n "$PUBLIC" ] &&
+        printf '%s\n' "$PUBLIC" > "$PUBLIC_CACHE"
+
+fi
+
+
+PUBLIC="$(
+    cat "$PUBLIC_CACHE" 2>/dev/null
+)"
+
+
+
+# ----------------------------------------------------------------------
+# Traffic counters
+# ----------------------------------------------------------------------
+
+RX=0
+TX=0
+
+
+if [ -n "$DEFAULT_DEV" ] &&
+   [ -d "/sys/class/net/$DEFAULT_DEV" ]; then
+
+    RX="$(
+        cat \
+        "/sys/class/net/$DEFAULT_DEV/statistics/rx_bytes" \
+        2>/dev/null
+    )"
+
+    TX="$(
+        cat \
+        "/sys/class/net/$DEFAULT_DEV/statistics/tx_bytes" \
+        2>/dev/null
+    )"
+
+fi
+
+
+case "$RX" in ""|*[!0-9]*) RX=0 ;; esac
+case "$TX" in ""|*[!0-9]*) TX=0 ;; esac
+
+
+
+# ----------------------------------------------------------------------
+# JSON
+# ----------------------------------------------------------------------
+
+printf '{'
+
+printf '"online":%s,' "$ONLINE"
+
+printf '"internet_state":"%s",' \
+    "$(json_escape "$INET_STATE")"
+
+printf '"internet_since":%s,' \
+    "$INET_SINCE"
+
+printf '"internet_duration":%s,' \
+    "$INET_DURATION"
+
+printf '"uptime_seconds":%s,' \
+    "$UPTIME"
+
+printf '"type":"%s",' \
+    "$(json_escape "$TYPE")"
+
+printf '"interface":"%s",' \
+    "$(json_escape "$DEFAULT_DEV")"
+
+printf '"gateway":"%s",' \
+    "$(json_escape "$GATEWAY")"
+
+printf '"local_ip":"%s",' \
+    "$(json_escape "$LOCAL_IP")"
+
+printf '"lan_ip":"%s",' \
+    "$(json_escape "$LAN_IP")"
+
+printf '"dns":"%s",' \
+    "$(json_escape "$DNS")"
+
+printf '"public_ip":"%s",' \
+    "$(json_escape "$PUBLIC")"
+
+printf '"rx_bytes":%s,' "$RX"
+printf '"tx_bytes":%s,' "$TX"
+
+printf '"ports":['
+
+
+FIRST=1
+FOUND_WAN=0
+FOUND_LAN=0
+
+
+for PPATH in /sys/class/net/*; do
+
+    P="$(basename "$PPATH")"
+
+
+    case "$P" in
+        lo|br-*|tailscale*|wg*|tun*|tap*|docker*|veth*)
+            continue
+            ;;
+    esac
+
+
+    [ -e "$PPATH/device" ] ||
+        continue
+
+
+    ROLE="$(port_role "$P")"
+
+
+    [ "$ROLE" = "WAN" ] &&
+        FOUND_WAN=1
+
+    [ "$ROLE" = "LAN" ] &&
+        FOUND_LAN=1
+
+
+    CARRIER="$(
+        cat "$PPATH/carrier" 2>/dev/null
+    )"
+
+
+    [ "$CARRIER" = "1" ] &&
+        PST="Connected" ||
+        PST="Disconnected"
+
+
+    CUR="$(current_speed "$P")"
+    MAX="$(max_speed "$P")"
+
+
+    DRIVER="$(
+        ethtool -i "$P" 2>/dev/null |
+        awk '/^driver:/ {
+            print $2
+            exit
+        }'
+    )"
+
+
+    DUPLEX="$(
+        ethtool "$P" 2>/dev/null |
+        awk -F': ' '
+        /^Duplex:/ {
+            print $2
+            exit
+        }'
+    )"
+
+
+    [ "$FIRST" = 1 ] ||
+        printf ','
+
+    FIRST=0
+
+
+    printf '{'
+
+    printf '"role":"%s",' \
+        "$(json_escape "$ROLE")"
+
+    printf '"name":"%s",' \
+        "$(json_escape "$P")"
+
+    printf '"state":"%s",' \
+        "$(json_escape "$PST")"
+
+    printf '"speed":"%s",' \
+        "$(json_escape "$CUR")"
+
+    printf '"max_speed":"%s",' \
+        "$(json_escape "$MAX")"
+
+    printf '"driver":"%s",' \
+        "$(json_escape "$DRIVER")"
+
+    printf '"duplex":"%s"' \
+        "$(json_escape "$DUPLEX")"
+
+    printf '}'
+
+done
+
+
+
+# Always show WAN and LAN status on an x86 router.
+# Do not invent a physical interface if one isn't assigned.
+
+if [ "$FOUND_WAN" = 0 ]; then
+
+    [ "$FIRST" = 1 ] || printf ','
+    FIRST=0
+
+    printf '%s' \
+    '{"role":"WAN","name":"Not assigned","state":"Not configured","speed":"—","max_speed":"—","driver":"—","duplex":"—"}'
+
+fi
+
+
+if [ "$FOUND_LAN" = 0 ]; then
+
+    [ "$FIRST" = 1 ] || printf ','
+
+    printf '%s' \
+    '{"role":"LAN","name":"Not assigned","state":"Not configured","speed":"—","max_speed":"—","driver":"—","duplex":"—"}'
+
+fi
+
+
+printf ']'
+printf '}\n'

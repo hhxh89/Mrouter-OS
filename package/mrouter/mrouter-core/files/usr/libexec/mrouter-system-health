@@ -1,0 +1,50 @@
+#!/bin/sh
+esc() { printf '%s' "$1" | tr '|\r\n' '   '; }
+val() { [ -n "$2" ] && printf '%s|%s\n' "$1" "$(esc "$2")"; }
+
+VERSION="$(sed -n 's/^MROUTER_VERSION="\(.*\)"/\1/p' /etc/mrouter-release 2>/dev/null)"
+OPENWRT="$(. /etc/openwrt_release 2>/dev/null; printf '%s' "${DISTRIB_RELEASE:-unknown}")"
+KERNEL="$(uname -r 2>/dev/null)"
+UP="$(cut -d. -f1 /proc/uptime 2>/dev/null)"
+LOAD="$(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null)"
+MEM_TOTAL="$(awk '/MemTotal:/ {print $2*1024}' /proc/meminfo 2>/dev/null)"
+MEM_AVAIL="$(awk '/MemAvailable:/ {print $2*1024}' /proc/meminfo 2>/dev/null)"
+ROOT="$(df -Pk / 2>/dev/null | awk 'NR==2 {print $2*1024" "$3*1024" "$4*1024}')"
+TEMP=''
+for Z in /sys/class/thermal/thermal_zone*/temp; do
+    [ -r "$Z" ] || continue
+    T="$(cat "$Z" 2>/dev/null)"
+    case "$T" in ''|*[!0-9-]*) continue ;; esac
+    [ "$T" -gt 1000 ] && T=$((T/1000))
+    [ -z "$TEMP" ] || [ "$T" -le "$TEMP" ] || TEMP="$T"
+    [ -n "$TEMP" ] || TEMP="$T"
+done
+
+val VERSION "${VERSION:-unknown}"
+val OPENWRT "$OPENWRT"
+val KERNEL "$KERNEL"
+val UPTIME "${UP:-0}"
+val LOAD "$LOAD"
+val MEMTOTAL "${MEM_TOTAL:-0}"
+val MEMAVAIL "${MEM_AVAIL:-0}"
+val ROOT "$ROOT"
+val TEMP "${TEMP:-}"
+
+service_state() {
+    N="$1"; S='missing'
+    if [ -x "/etc/init.d/$N" ]; then
+        S='stopped'
+        /etc/init.d/$N running >/dev/null 2>&1 && S='running'
+    fi
+    printf 'SERVICE|%s|%s\n' "$N" "$S"
+}
+
+for S in dnsmasq https-dns-proxy adguardhome nlbwmon tailscale pbr ttyd; do service_state "$S"; done
+
+# PBR is ruleset-driven rather than a normal long-running daemon.
+PBR_EN="$(uci -q get pbr.config.enabled)"; [ "$PBR_EN" = 1 ] || PBR_EN=0
+PBR_ACTIVE=0
+if [ "$PBR_EN" = 1 ] && nft list table inet fw4 2>/dev/null | grep -q 'chain pbr_mark_'; then PBR_ACTIVE=1; fi
+printf 'PBR|%s|%s\n' "$PBR_EN" "$PBR_ACTIVE"
+
+/usr/libexec/mrouter-status-ports 2>/dev/null || true

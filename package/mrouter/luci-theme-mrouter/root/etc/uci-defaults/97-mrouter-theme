@@ -1,0 +1,5 @@
+#!/bin/sh
+uci set luci.themes.Mrouter='/luci-static/mrouter'
+uci set luci.main.mediaurlbase='/luci-static/mrouter'
+uci commit luci
+exit 0

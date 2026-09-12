@@ -1,0 +1,40 @@
+#!/bin/sh /etc/rc.common
+START=98
+STOP=15
+
+ensure_pem_cert() {
+    [ -s /etc/uhttpd.crt ] && [ -s /etc/uhttpd.key ] || return 1
+
+    if grep -q 'BEGIN CERTIFICATE' /etc/uhttpd.crt 2>/dev/null; then
+        cp /etc/uhttpd.crt /etc/ttyd-mrouter.crt
+    else
+        openssl x509 -inform DER -in /etc/uhttpd.crt -out /etc/ttyd-mrouter.crt >/dev/null 2>&1 || return 1
+    fi
+
+    if grep -q 'BEGIN .*PRIVATE KEY' /etc/uhttpd.key 2>/dev/null; then
+        cp /etc/uhttpd.key /etc/ttyd-mrouter.key
+    else
+        openssl pkey -inform DER -in /etc/uhttpd.key -out /etc/ttyd-mrouter.key >/dev/null 2>&1 || return 1
+    fi
+
+    chmod 600 /etc/ttyd-mrouter.crt /etc/ttyd-mrouter.key
+}
+
+start() {
+    ensure_pem_cert || return 0
+
+    uci -q get ttyd.@ttyd[0] >/dev/null || uci add ttyd ttyd >/dev/null
+    uci set ttyd.@ttyd[0].interface='@lan'
+    uci set ttyd.@ttyd[0].command='/bin/login'
+    uci set ttyd.@ttyd[0].enable='1'
+    uci set ttyd.@ttyd[0].port='7681'
+    uci set ttyd.@ttyd[0].readonly='0'
+    uci set ttyd.@ttyd[0].check_origin='0'
+    uci set ttyd.@ttyd[0].ssl='1'
+    uci set ttyd.@ttyd[0].ssl_cert='/etc/ttyd-mrouter.crt'
+    uci set ttyd.@ttyd[0].ssl_key='/etc/ttyd-mrouter.key'
+    uci commit ttyd
+
+    /etc/init.d/ttyd enable >/dev/null 2>&1 || true
+    /etc/init.d/ttyd restart >/dev/null 2>&1 || true
+}

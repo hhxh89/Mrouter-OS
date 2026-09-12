@@ -1,0 +1,4 @@
+config filter 'config'
+	option enabled '0'
+	option force_dns '0'
+	option block_dot '0'

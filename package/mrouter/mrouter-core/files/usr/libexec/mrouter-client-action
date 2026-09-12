@@ -1,0 +1,72 @@
+#!/bin/sh
+
+ACTION="$1"
+MAC="$2"
+VALUE="$3"
+IP="${4:-}"
+HOST="${5:-}"
+ZONE="${6:-lan}"
+
+valid_mac() {
+    printf '%s\n' "$1" | grep -Eq '^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$'
+}
+
+valid_mac "$MAC" || {
+    echo "Invalid MAC address"
+    exit 1
+}
+
+case "$ZONE" in
+    lan|iot) ;;
+    *) echo "Invalid network zone"; exit 1 ;;
+esac
+
+KEY="$(printf '%s' "$MAC" | tr -d ':' | tr 'A-F' 'a-f')"
+
+case "$ACTION" in
+block)
+    SEC="mrouter_block_$KEY"
+    uci -q delete "firewall.$SEC"
+
+    if [ "$VALUE" = "1" ]; then
+        uci set "firewall.$SEC=rule"
+        uci set "firewall.$SEC.name=Mrouter block $MAC"
+        uci set "firewall.$SEC.src=$ZONE"
+        uci set "firewall.$SEC.src_mac=$MAC"
+        uci set "firewall.$SEC.target=REJECT"
+    fi
+
+    uci commit firewall
+    /etc/init.d/firewall reload >/dev/null 2>&1 || true
+    echo "OK"
+    ;;
+
+reserve)
+    SEC="mrouter_reserve_$KEY"
+    uci -q delete "dhcp.$SEC"
+
+    if [ "$VALUE" = "1" ]; then
+        printf '%s\n' "$IP" | grep -Eq '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' || {
+            echo "Invalid IPv4 address"
+            exit 1
+        }
+
+        uci set "dhcp.$SEC=host"
+        uci set "dhcp.$SEC.mac=$MAC"
+        uci set "dhcp.$SEC.ip=$IP"
+
+        [ -n "$HOST" ] &&
+        [ "$HOST" != "Unknown device" ] &&
+            uci set "dhcp.$SEC.name=$HOST"
+    fi
+
+    uci commit dhcp
+    /etc/init.d/dnsmasq reload >/dev/null 2>&1 || true
+    echo "OK"
+    ;;
+
+*)
+    echo "Unknown action"
+    exit 1
+    ;;
+esac

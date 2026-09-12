@@ -1,0 +1,759 @@
+#!/bin/sh
+
+
+ACTION="${1:-status}"
+
+BASE="/etc/mrouter/openvpn"
+PROFILES="$BASE/profiles"
+ACTIVE="$BASE/active.ovpn"
+SELECTED="$BASE/selected"
+AUTH="$BASE/auth.txt"
+
+UPLOAD="/tmp/mrouter-openvpn-upload"
+
+
+mkdir -p "$PROFILES"
+
+chmod 700 "$BASE" "$PROFILES"
+
+
+
+escape_pipe() {
+
+    printf '%s' "$1" |
+    tr '|\r\n' '   '
+}
+
+
+
+selected_profile() {
+
+    cat "$SELECTED" 2>/dev/null
+}
+
+
+
+setup_firewall() {
+
+    uci -q delete firewall.mrouter_ovpn_zone
+    uci -q delete firewall.mrouter_ovpn_forward
+
+
+    uci set firewall.mrouter_ovpn_zone='zone'
+
+    uci set \
+        firewall.mrouter_ovpn_zone.name='mrouter_ovpn'
+
+    uci add_list \
+        firewall.mrouter_ovpn_zone.network='mrouter_ovpn'
+
+    uci set \
+        firewall.mrouter_ovpn_zone.input='REJECT'
+
+    uci set \
+        firewall.mrouter_ovpn_zone.output='ACCEPT'
+
+    uci set \
+        firewall.mrouter_ovpn_zone.forward='REJECT'
+
+    uci set \
+        firewall.mrouter_ovpn_zone.masq='1'
+
+    uci set \
+        firewall.mrouter_ovpn_zone.mtu_fix='1'
+
+
+    uci set \
+        firewall.mrouter_ovpn_forward='forwarding'
+
+    uci set \
+        firewall.mrouter_ovpn_forward.src='lan'
+
+    uci set \
+        firewall.mrouter_ovpn_forward.dest='mrouter_ovpn'
+
+
+    uci commit firewall
+
+    /etc/init.d/firewall reload \
+        >/dev/null 2>&1 ||
+        true
+}
+
+
+
+validate_profile_security() {
+    FILE="$1"
+
+    # Imported provider files are data, not trusted root scripts. Reject
+    # directives capable of launching local programs or opening management
+    # control sockets. Standard commercial-provider client profiles do not
+    # need these directives.
+    if awk '
+        /^[[:space:]]*[#;]/ { next }
+        NF == 0 { next }
+        {
+            k=tolower($1)
+            if (k=="up" || k=="down" || k=="route-up" ||
+                k=="route-pre-down" || k=="ipchange" ||
+                k=="learn-address" || k=="client-connect" ||
+                k=="client-disconnect" || k=="auth-user-pass-verify" ||
+                k=="tls-verify" || k=="plugin" || k=="script-security" ||
+                k=="management" || k=="management-client" ||
+                k=="management-external-key" || k=="management-query-passwords" ||
+                k=="config" || k=="include") {
+                print k
+                exit 10
+            }
+        }
+    ' "$FILE" >/tmp/mrouter-openvpn-unsafe.$$; then
+        rm -f /tmp/mrouter-openvpn-unsafe.$$
+    else
+        RC=$?
+        BAD="$(cat /tmp/mrouter-openvpn-unsafe.$$ 2>/dev/null)"
+        rm -f /tmp/mrouter-openvpn-unsafe.$$
+        [ "$RC" = "10" ] || BAD="invalid configuration"
+        echo "Unsafe OpenVPN directive rejected: ${BAD:-unknown}"
+        return 1
+    fi
+
+    # Reject absolute/parent paths in directives that read local files. Bundle
+    # assets must stay under the imported profile directory; inline blocks are
+    # unaffected.
+    awk '
+        /^[[:space:]]*[#;]/ { next }
+        NF < 2 { next }
+        {
+            k=tolower($1)
+            if (k=="ca" || k=="cert" || k=="key" || k=="pkcs12" ||
+                k=="tls-auth" || k=="tls-crypt" || k=="tls-crypt-v2" ||
+                k=="crl-verify" || k=="secret" || k=="askpass" ||
+                k=="http-proxy-user-pass") {
+                v=$2
+                gsub(/^\"|\"$/, "", v)
+                if (v ~ /^\// || v ~ /(^|\/)\.\.(\/|$)/) exit 11
+            }
+        }
+    ' "$FILE" || {
+        echo "OpenVPN profile contains a file path outside its imported bundle."
+        return 1
+    }
+
+    return 0
+}
+
+activate_profile() {
+
+    REL="$1"
+
+
+    case "$REL" in
+        ""|/*|*'..'*|*'|'*)
+            echo "Invalid profile"
+            return 1
+            ;;
+    esac
+
+
+    FULL="$PROFILES/$REL"
+
+    [ -f "$FULL" ] || {
+        echo "Profile does not exist"
+        return 1
+    }
+
+
+    REAL="$(
+        readlink -f "$FULL" 2>/dev/null
+    )"
+
+
+    case "$REAL" in
+
+        "$PROFILES"/*)
+            ;;
+
+        *)
+            echo "Profile is outside profile directory"
+            return 1
+            ;;
+
+    esac
+
+
+    validate_profile_security "$REAL" || return 1
+
+
+    DIR="$(
+        dirname "$REAL"
+    )"
+
+
+    umask 077
+
+
+    {
+        printf 'cd "%s"\n' "$DIR"
+        cat "$REAL"
+    } > "$ACTIVE"
+
+
+    # Never honor an imported credentials path. Credentials are either
+    # supplied by the Mrouter UI or left as the standard bare directive.
+    if grep -Eq '^[[:space:]]*auth-user-pass([[:space:]]|$)' "$ACTIVE"; then
+        if [ -s "$AUTH" ]; then
+            sed -i -E 's|^[[:space:]]*auth-user-pass([^#;]*)$|auth-user-pass /etc/mrouter/openvpn/auth.txt|' "$ACTIVE"
+        else
+            sed -i -E 's|^[[:space:]]*auth-user-pass([^#;]*)$|auth-user-pass|' "$ACTIVE"
+        fi
+    fi
+
+
+    # We deliberately prevent imported provider configs from hijacking
+    # the router's default route.
+    #
+    # PBR decides which clients/destinations use the tunnel.
+
+    if ! grep -Eq \
+        '^[[:space:]]*route-nopull([[:space:]]|$)' \
+        "$ACTIVE"; then
+
+        printf '\nroute-nopull\n' >> "$ACTIVE"
+
+    fi
+
+
+    printf '%s\n' "$REL" > "$SELECTED"
+
+
+    uci -q delete network.mrouter_ovpn
+
+    uci set network.mrouter_ovpn='interface'
+    uci set network.mrouter_ovpn.proto='openvpn'
+    uci set network.mrouter_ovpn.config="$ACTIVE"
+
+    # Import/select doesn't connect automatically.
+    uci set network.mrouter_ovpn.disabled='1'
+
+    uci commit network
+
+
+    setup_firewall
+
+
+    ifdown mrouter_ovpn \
+        >/dev/null 2>&1 ||
+        true
+
+
+    return 0
+}
+
+
+
+safe_archive_list() {
+
+    while IFS= read -r ENTRY; do
+
+        case "$ENTRY" in
+
+            "" )
+                ;;
+
+            /*|../*|*/../*|*/..|*'|'*)
+                echo "Unsafe archive path: $ENTRY"
+                return 1
+                ;;
+
+        esac
+
+    done
+
+
+    return 0
+}
+
+
+
+import_file() {
+
+    NAME="$1"
+
+
+    [ -f "$UPLOAD" ] || {
+        echo "Uploaded file is missing"
+        return 1
+    }
+
+
+    rm -rf "$PROFILES"
+
+    mkdir -p "$PROFILES"
+
+    chmod 700 "$PROFILES"
+
+
+    case "$NAME" in
+
+
+        *.ovpn|*.OVPN|*.conf|*.CONF)
+
+            SAFE="$(
+                basename "$NAME" |
+                tr -c \
+                    'A-Za-z0-9._+-' \
+                    '_'
+            )"
+
+
+            cp "$UPLOAD" \
+                "$PROFILES/$SAFE"
+            ;;
+
+
+
+        *.zip|*.ZIP)
+
+            command -v unzip \
+                >/dev/null 2>&1 || {
+                    echo "unzip is not installed"
+                    return 1
+                }
+
+
+            LIST="$(
+                unzip -Z1 "$UPLOAD" \
+                    2>/dev/null
+            )" || {
+                echo "Invalid ZIP archive"
+                return 1
+            }
+
+
+            printf '%s\n' "$LIST" |
+                safe_archive_list ||
+                return 1
+
+
+            unzip \
+                -qq \
+                -o \
+                "$UPLOAD" \
+                -d "$PROFILES" ||
+                return 1
+            ;;
+
+
+
+        *.tar.gz|*.tgz|*.TAR.GZ|*.TGZ)
+
+            LIST="$(
+                tar -tzf "$UPLOAD" \
+                    2>/dev/null
+            )" || {
+                echo "Invalid tar.gz archive"
+                return 1
+            }
+
+
+            printf '%s\n' "$LIST" |
+                safe_archive_list ||
+                return 1
+
+
+            tar \
+                -xzf "$UPLOAD" \
+                -C "$PROFILES" ||
+                return 1
+            ;;
+
+
+
+        *)
+
+            echo "Supported files: .ovpn .conf .zip .tar.gz .tgz"
+            return 1
+            ;;
+
+    esac
+
+
+    # Never trust archive symlinks or device entries.
+
+    find "$PROFILES" \
+        -type l \
+        -delete \
+        2>/dev/null ||
+        true
+
+    # Remove FIFOs, devices, sockets and other special archive entries.
+    find "$PROFILES" \
+        ! -type f ! -type d \
+        -delete \
+        2>/dev/null ||
+        true
+
+    # Keep provider bundles bounded on an embedded router.
+    FILE_COUNT="$(find "$PROFILES" -type f 2>/dev/null | wc -l)"
+    SIZE_KB="$(du -sk "$PROFILES" 2>/dev/null | awk '{print $1}')"
+    [ "${FILE_COUNT:-0}" -le 256 ] && [ "${SIZE_KB:-0}" -le 65536 ] || {
+        rm -rf "$PROFILES"
+        mkdir -p "$PROFILES"
+        echo "OpenVPN bundle is too large (limit: 256 files / 64 MiB)."
+        return 1
+    }
+
+
+    FIRST="$(
+        find "$PROFILES" \
+            -type f \
+            \( \
+                -iname '*.ovpn' \
+                -o \
+                -iname '*.conf' \
+            \) |
+        head -n1
+    )"
+
+
+    [ -n "$FIRST" ] || {
+        echo "No OpenVPN configuration found in upload"
+        return 1
+    }
+
+
+    REL="${FIRST#"$PROFILES"/}"
+
+
+    activate_profile "$REL" ||
+        return 1
+
+
+    rm -f "$UPLOAD"
+
+
+    echo "Imported $REL"
+}
+
+
+
+status_data() {
+
+    CONFIGURED=0
+    CONNECTED=0
+
+
+    [ -s "$ACTIVE" ] &&
+        CONFIGURED=1
+
+
+    UBUS="$(
+        ubus call \
+            network.interface.mrouter_ovpn \
+            status \
+            2>/dev/null
+    )"
+
+
+    UP="$(
+        printf '%s' "$UBUS" |
+        jsonfilter \
+            -e '@.up' \
+        2>/dev/null
+    )"
+
+
+    [ "$UP" = "true" ] &&
+        CONNECTED=1
+
+
+    DEV="$(
+        printf '%s' "$UBUS" |
+        jsonfilter \
+            -e '@.l3_device' \
+        2>/dev/null
+    )"
+
+
+    [ -n "$DEV" ] ||
+    DEV="$(
+        printf '%s' "$UBUS" |
+        jsonfilter \
+            -e '@.device' \
+        2>/dev/null
+    )"
+
+
+    TUNIP=""
+
+    if [ -n "$DEV" ]; then
+
+        TUNIP="$(
+            ip -4 addr show dev "$DEV" \
+                2>/dev/null |
+            awk '
+            /inet / {
+                print $2
+                exit
+            }' |
+            cut -d/ -f1
+        )"
+
+    fi
+
+
+    REMOTE="$(
+        awk '
+        /^[[:space:]]*#/ {
+            next
+        }
+
+        /^[[:space:]]*remote[[:space:]]+/ {
+            if (NF >= 3)
+                print $2 ":" $3
+            else
+                print $2
+            exit
+        }
+        ' "$ACTIVE" \
+        2>/dev/null
+    )"
+
+
+    PROTO="$(
+        awk '
+        /^[[:space:]]*#/ {
+            next
+        }
+
+        /^[[:space:]]*proto[[:space:]]+/ {
+            print $2
+            exit
+        }
+        ' "$ACTIVE" \
+        2>/dev/null
+    )"
+
+
+    RX=0
+    TX=0
+
+
+    if [ -n "$DEV" ] &&
+       [ -d "/sys/class/net/$DEV" ]; then
+
+        RX="$(
+            cat \
+            "/sys/class/net/$DEV/statistics/rx_bytes" \
+            2>/dev/null
+        )"
+
+        TX="$(
+            cat \
+            "/sys/class/net/$DEV/statistics/tx_bytes" \
+            2>/dev/null
+        )"
+
+    fi
+
+
+    case "$RX" in
+        ""|*[!0-9]*)
+            RX=0
+            ;;
+    esac
+
+
+    case "$TX" in
+        ""|*[!0-9]*)
+            TX=0
+            ;;
+    esac
+
+
+    AUTH_SET=0
+
+    [ -s "$AUTH" ] &&
+        AUTH_SET=1
+
+
+    printf 'STATUS|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
+        "$CONFIGURED" \
+        "$CONNECTED" \
+        "$(escape_pipe "$(selected_profile)")" \
+        "$(escape_pipe "$REMOTE")" \
+        "$(escape_pipe "$PROTO")" \
+        "$(escape_pipe "$DEV")" \
+        "$(escape_pipe "$TUNIP")" \
+        "$RX" \
+        "$TX" \
+        "$AUTH_SET"
+
+
+    find "$PROFILES" \
+        -type f \
+        \( \
+            -iname '*.ovpn' \
+            -o \
+            -iname '*.conf' \
+        \) \
+        2>/dev/null |
+    sort |
+    while IFS= read -r FILE; do
+
+        REL="${FILE#"$PROFILES"/}"
+
+        printf 'PROFILE|%s\n' \
+            "$(escape_pipe "$REL")"
+
+    done
+}
+
+
+
+case "$ACTION" in
+
+
+    status)
+
+        status_data
+        ;;
+
+
+
+    import)
+
+        import_file "$2" ||
+            exit 1
+
+        status_data
+        ;;
+
+
+
+    select)
+
+        activate_profile "$2" ||
+            exit 1
+
+        status_data
+        ;;
+
+
+
+    credentials)
+
+        USER="$2"
+        PASS="$3"
+
+
+        if [ -z "$USER" ] &&
+           [ -z "$PASS" ]; then
+
+            rm -f "$AUTH"
+
+        else
+
+            umask 077
+
+            {
+                printf '%s\n' "$USER"
+                printf '%s\n' "$PASS"
+            } > "$AUTH"
+
+        fi
+
+
+        REL="$(
+            selected_profile
+        )"
+
+
+        if [ -n "$REL" ]; then
+            activate_profile "$REL" ||
+                exit 1
+        fi
+
+
+        status_data
+        ;;
+
+
+
+    connect)
+
+        WANTED="$2"
+
+
+        [ -s "$ACTIVE" ] || {
+            echo "Import an OpenVPN configuration first."
+            exit 1
+        }
+
+
+        if [ "$WANTED" = "1" ]; then
+
+            uci set \
+                network.mrouter_ovpn.disabled='0'
+
+            uci commit network
+
+
+            ifup mrouter_ovpn \
+                >/dev/null 2>&1 ||
+                true
+
+        else
+
+            uci set \
+                network.mrouter_ovpn.disabled='1'
+
+            uci commit network
+
+
+            ifdown mrouter_ovpn \
+                >/dev/null 2>&1 ||
+                true
+
+        fi
+
+
+        sleep 2
+
+        status_data
+        ;;
+
+
+
+    remove)
+
+        ifdown mrouter_ovpn \
+            >/dev/null 2>&1 ||
+            true
+
+        uci -q delete \
+            network.mrouter_ovpn
+
+        uci commit network
+
+
+        rm -rf \
+            "$PROFILES" \
+            "$ACTIVE" \
+            "$SELECTED" \
+            "$AUTH"
+
+        mkdir -p "$PROFILES"
+
+        status_data
+        ;;
+
+
+
+    *)
+
+        echo "Unknown action"
+        exit 1
+        ;;
+
+esac

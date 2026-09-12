@@ -1,0 +1,232 @@
+#!/bin/sh
+
+ACTION="${1:-status}"
+DIR="/etc/mrouter/wireguard"
+CLIENTS="$DIR/clients"
+
+mkdir -p "$CLIENTS"
+chmod 700 "$DIR" "$CLIENTS"
+
+get_server_public_key() {
+    PRIV="$(uci -q get network.wg0.private_key)"
+    [ -n "$PRIV" ] || return
+    printf '%s\n' "$PRIV" | wg pubkey
+}
+
+get_public_ip() {
+    if [ -s /tmp/mrouter-public-ip ]; then
+        cat /tmp/mrouter-public-ip
+        return
+    fi
+
+    curl -4 -fsS --max-time 5 https://api.ipify.org 2>/dev/null
+}
+
+ensure_server() {
+    if [ "$(uci -q get network.wg0.proto)" != "wireguard" ]; then
+        umask 077
+        SERVER_PRIV="$(wg genkey)"
+
+        uci set network.wg0='interface'
+        uci set network.wg0.proto='wireguard'
+        uci set network.wg0.private_key="$SERVER_PRIV"
+        uci set network.wg0.listen_port='51820'
+        uci add_list network.wg0.addresses='10.14.0.1/24'
+        uci commit network
+    fi
+
+    uci -q delete firewall.mrouter_wg_zone
+    uci set firewall.mrouter_wg_zone='zone'
+    uci set firewall.mrouter_wg_zone.name='wireguard'
+    uci set firewall.mrouter_wg_zone.input='ACCEPT'
+    uci set firewall.mrouter_wg_zone.output='ACCEPT'
+    uci set firewall.mrouter_wg_zone.forward='REJECT'
+    uci add_list firewall.mrouter_wg_zone.network='wg0'
+
+    uci -q delete firewall.mrouter_wg_lan
+    uci set firewall.mrouter_wg_lan='forwarding'
+    uci set firewall.mrouter_wg_lan.src='wireguard'
+    uci set firewall.mrouter_wg_lan.dest='lan'
+
+    # IoT remains isolated from remote WireGuard clients.
+    uci -q delete firewall.mrouter_wg_iot
+
+    uci -q delete firewall.mrouter_wg_wan
+    uci set firewall.mrouter_wg_wan='forwarding'
+    uci set firewall.mrouter_wg_wan.src='wireguard'
+    uci set firewall.mrouter_wg_wan.dest='wan'
+
+    uci -q delete firewall.mrouter_wg_in
+    uci set firewall.mrouter_wg_in='rule'
+    uci set firewall.mrouter_wg_in.name='Allow-WireGuard'
+    uci set firewall.mrouter_wg_in.src='wan'
+    uci set firewall.mrouter_wg_in.proto='udp'
+    uci set firewall.mrouter_wg_in.dest_port='51820'
+    uci set firewall.mrouter_wg_in.target='ACCEPT'
+    uci commit firewall
+
+    /etc/init.d/firewall restart >/dev/null 2>&1 || true
+    /etc/init.d/network reload >/dev/null 2>&1 || true
+    sleep 2
+}
+
+next_client_number() {
+    N=2
+    while [ -f "$CLIENTS/client-$N.conf" ] || uci -q get "network.mrouter_wg_client_$N" >/dev/null 2>&1; do
+        N=$((N + 1))
+        [ "$N" -lt 250 ] || {
+            echo 0
+            return
+        }
+    done
+    echo "$N"
+}
+
+status_data() {
+    CONFIGURED=0
+    RUNNING=0
+
+    [ "$(uci -q get network.wg0.proto)" = "wireguard" ] && CONFIGURED=1
+    wg show wg0 >/dev/null 2>&1 && RUNNING=1
+
+    PUB="$(get_server_public_key)"
+    PORT="$(uci -q get network.wg0.listen_port)"
+    [ -n "$PORT" ] || PORT=51820
+    ADDR="$(uci -q get network.wg0.addresses | awk '{print $1}')"
+    [ -n "$ADDR" ] || ADDR="10.14.0.1/24"
+    PUBLIC="$(get_public_ip)"
+
+    COUNT="$(find "$CLIENTS" -type f -name 'client-*.conf' 2>/dev/null | wc -l)"
+
+    printf 'STATUS|%s|%s|%s|%s|%s|%s|%s\n' \
+        "$CONFIGURED" "$RUNNING" "$PUB" "$PORT" "$ADDR" "$PUBLIC" "$COUNT"
+
+    for FILE in "$CLIENTS"/client-*.conf; do
+        [ -f "$FILE" ] || continue
+        BASE="$(basename "$FILE" .conf)"
+        N="${BASE#client-}"
+        NAME="$(cat "$CLIENTS/client-$N.name" 2>/dev/null)"
+        [ -n "$NAME" ] || NAME="Client $N"
+        printf 'CLIENT|%s|%s\n' "$N" "$(printf '%s' "$NAME" | tr '|\r\n' '   ')"
+    done
+}
+
+generate_client() {
+    ENDPOINT="$1"
+    FULL="${2:-1}"
+    NAME="${3:-}"
+
+    case "$ENDPOINT" in
+        ""|*[!A-Za-z0-9._:\[\]-]*)
+            echo "ERROR|Invalid endpoint"
+            exit 1
+            ;;
+    esac
+
+    ensure_server
+
+    N="$(next_client_number)"
+    [ "$N" != "0" ] || {
+        echo "ERROR|No free client addresses"
+        exit 1
+    }
+
+    [ -n "$NAME" ] || NAME="Client $N"
+    NAME="$(printf '%s' "$NAME" | tr '|\r\n' '   ' | cut -c1-48)"
+
+    umask 077
+    CLIENT_PRIV="$(wg genkey)"
+    CLIENT_PUB="$(printf '%s\n' "$CLIENT_PRIV" | wg pubkey)"
+    PSK="$(wg genpsk)"
+    SERVER_PUB="$(get_server_public_key)"
+
+    SEC="mrouter_wg_client_$N"
+
+    uci set "network.$SEC=wireguard_wg0"
+    uci set "network.$SEC.description=$NAME"
+    uci set "network.$SEC.public_key=$CLIENT_PUB"
+    uci set "network.$SEC.preshared_key=$PSK"
+    uci add_list "network.$SEC.allowed_ips=10.14.0.$N/32"
+    uci commit network
+
+    if [ "$FULL" = "1" ]; then
+        ALLOWED="0.0.0.0/0"
+    else
+        . /lib/functions/network.sh
+        network_flush_cache
+        network_get_subnet LAN_SUBNET lan
+        ALLOWED="10.14.0.0/24"
+        [ -n "$LAN_SUBNET" ] && ALLOWED="$ALLOWED,$LAN_SUBNET"
+    fi
+
+    FILE="$CLIENTS/client-$N.conf"
+
+    cat > "$FILE" <<EOF2
+[Interface]
+PrivateKey = $CLIENT_PRIV
+Address = 10.14.0.$N/32
+DNS = 10.14.0.1
+
+[Peer]
+PublicKey = $SERVER_PUB
+PresharedKey = $PSK
+Endpoint = $ENDPOINT:51820
+AllowedIPs = $ALLOWED
+PersistentKeepalive = 25
+EOF2
+
+    printf '%s' "$NAME" > "$CLIENTS/client-$N.name"
+    chmod 600 "$FILE" "$CLIENTS/client-$N.name"
+
+    /etc/init.d/network reload >/dev/null 2>&1 || true
+
+    echo "CONFIG_BEGIN"
+    cat "$FILE"
+    echo "CONFIG_END"
+}
+
+view_client() {
+    N="$1"
+    printf '%s\n' "$N" | grep -Eq '^[0-9]+$' || exit 1
+    FILE="$CLIENTS/client-$N.conf"
+    [ -f "$FILE" ] || {
+        echo "Client profile not found"
+        exit 1
+    }
+    echo "CONFIG_BEGIN"
+    cat "$FILE"
+    echo "CONFIG_END"
+}
+
+revoke_client() {
+    N="$1"
+    printf '%s\n' "$N" | grep -Eq '^[0-9]+$' || exit 1
+
+    uci -q delete "network.mrouter_wg_client_$N"
+    uci commit network
+    rm -f "$CLIENTS/client-$N.conf" "$CLIENTS/client-$N.name"
+    /etc/init.d/network reload >/dev/null 2>&1 || true
+    status_data
+}
+
+case "$ACTION" in
+status)
+    status_data
+    ;;
+generate)
+    generate_client "$2" "${3:-1}" "${4:-}"
+    ;;
+view)
+    view_client "$2"
+    ;;
+revoke)
+    revoke_client "$2"
+    ;;
+restart)
+    ifup wg0 >/dev/null 2>&1 || true
+    status_data
+    ;;
+*)
+    exit 1
+    ;;
+esac

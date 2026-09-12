@@ -1,0 +1,60 @@
+{# Mrouter-OS login page; preserves normal LuCI username/password authentication. #}
+{% include('header') %}
+
+<form method="post" class="mrouter-login-form">
+<div class="cbi-map mrouter-login-map">
+
+{% if (fuser): %}
+<div class="alert-message warning"><p>{{ _('Invalid username and/or password! Please try again.') }}</p></div>
+{% endif %}
+{% if (auth_message && !fuser): %}
+<div class="alert-message"><p>{{ auth_message }}</p></div>
+{% endif %}
+
+<h2 name="content">Welcome to Mrouter-OS</h2>
+<div class="cbi-map-descr">Sign in to manage this router.</div>
+
+<div class="mrouter-private-notice">
+<strong>Private management interface</strong>
+<span>For the owner and authorised users only.</span>
+</div>
+
+<div class="cbi-section mrouter-login-fields"><div class="cbi-section-node">
+<div class="cbi-value">
+<label class="cbi-value-title">{{ _('Username') }}</label>
+<div class="cbi-value-field"><input class="cbi-input-text" type="text" name="luci_username" value="{{ entityencode(duser, true) }}" autocomplete="username" /></div>
+</div>
+<div class="cbi-value cbi-value-last">
+<label class="cbi-value-title">{{ _('Password') }}</label>
+<div class="cbi-value-field"><input class="cbi-input-text" type="password" name="luci_password" autocomplete="current-password" /></div>
+</div>
+
+{% if (auth_fields): %}
+{% for (let field in auth_fields): %}
+<div class="cbi-value">
+<label class="cbi-value-title">{{ _(field.label ?? field.name) }}</label>
+<div class="cbi-value-field"><input class="cbi-input-text" type="{{ field.type ?? 'text' }}" name="{{ field.name }}" {% if (field.placeholder): %}placeholder="{{ field.placeholder }}"{% endif %} {% if (field.inputmode): %}inputmode="{{ field.inputmode }}"{% endif %} {% if (field.pattern): %}pattern="{{ field.pattern }}"{% endif %} {% if (field.maxlength): %}maxlength="{{ field.maxlength }}"{% endif %} {% if (field.autocomplete): %}autocomplete="{{ field.autocomplete }}"{% endif %} {% if (field.required): %}required{% endif %} /></div>
+</div>
+{% endfor %}
+{% endif %}
+{% if (auth_html): %}<div class="cbi-value">{{ auth_html }}</div>{% endif %}
+{% if (auth_assets): %}{% for (let asset in auth_assets): %}{% if (asset.type == 'script'): %}<script src="{{ asset.src }}"></script>{% endif %}{% endfor %}{% endif %}
+</div></div>
+
+<div class="cbi-page-actions mrouter-login-actions">
+<input type="submit" value="{{ _('Log in') }}" class="btn cbi-button cbi-button-apply" />
+</div>
+
+</div>
+</form>
+
+<script>
+(function() {
+    var user = document.getElementsByName('luci_username')[0];
+    var pass = document.getElementsByName('luci_password')[0];
+    if (user && user.value && pass) pass.focus();
+    else if (user) user.focus();
+})();
+</script>
+
+{% include('footer') %}

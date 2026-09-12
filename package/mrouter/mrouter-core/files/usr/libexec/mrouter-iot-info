@@ -1,0 +1,17 @@
+#!/bin/sh
+ACTION="${1:-status}"
+. /lib/functions/network.sh 2>/dev/null || true
+case "$ACTION" in
+status)
+    IP=''; MASK=''; DEV=''; SUB=''; VLAN=''
+    network_get_ipaddr IP iot 2>/dev/null || true
+    network_get_device DEV iot 2>/dev/null || true
+    network_get_subnet SUB iot 2>/dev/null || true
+    MASK="$(uci -q get network.iot.netmask || true)"
+    VLAN="$(uci -q get network.mrouter_iot_vlan.vid || true)"
+    CONFIGURED=0
+    [ -n "$IP" ] && [ -n "$DEV" ] && CONFIGURED=1
+    printf 'STATUS|%s|%s|%s|%s|%s|%s\n' "$CONFIGURED" "$IP" "$MASK" "$DEV" "$VLAN" "$SUB"
+    ;;
+*) exit 1 ;;
+esac

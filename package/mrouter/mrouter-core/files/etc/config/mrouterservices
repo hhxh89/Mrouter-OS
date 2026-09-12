@@ -1,0 +1,4 @@
+config general 'main'
+	option dns_mode 'mrouter'
+	option pihole_host ''
+	option pihole_port '53'

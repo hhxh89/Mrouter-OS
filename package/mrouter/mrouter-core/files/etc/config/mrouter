@@ -1,0 +1,11 @@
+config system 'system'
+	option version '1.0.0'
+	option channel 'rc'
+	option schema '1202'
+	option initialized '0'
+
+config ports 'ports'
+	option wan_device ''
+	option lan_device ''
+	option initialized '0'
+	option pending_reboot '0'

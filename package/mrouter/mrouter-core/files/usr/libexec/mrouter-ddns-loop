@@ -1,0 +1,10 @@
+#!/bin/sh
+while :; do
+    /usr/libexec/mrouter-ddns run >/dev/null 2>&1
+    INTERVAL="$(uci -q get mrouterddns.main.interval)"
+    case "$INTERVAL" in
+        ''|*[!0-9]*) INTERVAL=300 ;;
+    esac
+    [ "$INTERVAL" -ge 60 ] || INTERVAL=60
+    sleep "$INTERVAL"
+done

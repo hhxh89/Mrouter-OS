@@ -1,0 +1,655 @@
+#!/bin/sh
+
+ACTION="${1:-status}"
+
+safe_section() {
+    printf '%s' "$1" | tr -cd 'A-Za-z0-9_'
+}
+
+clean_list() {
+    printf '%s' "$1" |
+        tr ',\r\n\t' '    ' |
+        tr -s ' ' |
+        sed 's/^ *//;s/ *$//'
+}
+
+service_domains() {
+    case "$1" in
+        netflix)
+            echo "netflix.com nflxext.com nflximg.net nflxso.net nflxvideo.net"
+            ;;
+        bbc)
+            echo "bbc.co.uk bbc.com bbci.co.uk bbc.net.uk"
+            ;;
+        itv)
+            echo "itv.com itvstatic.com itvhub.com"
+            ;;
+        disney)
+            echo "disneyplus.com disney-plus.net dssott.com bamgrid.com"
+            ;;
+        prime)
+            echo "primevideo.com amazonvideo.com media-amazon.com"
+            ;;
+        youtube)
+            echo "youtube.com googlevideo.com ytimg.com youtu.be"
+            ;;
+        teams)
+            echo "teams.microsoft.com teams.live.com skype.com skypeforbusiness.com"
+            ;;
+        zoom)
+            echo "zoom.us zoom.com zoomgov.com"
+            ;;
+        discord)
+            echo "discord.com discord.gg discordapp.com discordapp.net discord.media"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
+group_macs() {
+    G="$1"
+    uci -q get "mrouterpolicy.$G.mac"
+}
+
+target_exists() {
+    T="$1"
+
+    [ "$T" = "wan" ] && return 0
+
+    case "$T" in
+        @*)
+            DEV="${T#@}"
+            [ -e "/sys/class/net/$DEV" ]
+            return
+            ;;
+    esac
+
+    # PBR tunnel targets may be physical devices (for example tailscale0).
+    [ -e "/sys/class/net/$T" ] && return 0
+
+    uci -q get "network.$T" >/dev/null 2>&1
+}
+
+target_up() {
+    T="$1"
+
+    [ "$T" = "wan" ] && {
+        U="$(ubus call network.interface.wan status 2>/dev/null)"
+        [ "$(printf '%s' "$U" | jsonfilter -e '@.up' 2>/dev/null)" = "true" ]
+        return
+    }
+
+    case "$T" in
+        @*)
+            DEV="${T#@}"
+            [ -e "/sys/class/net/$DEV/operstate" ] || return 1
+            S="$(cat "/sys/class/net/$DEV/operstate" 2>/dev/null)"
+            [ "$S" = "up" ] || [ "$S" = "unknown" ]
+            return
+            ;;
+    esac
+
+    if [ -e "/sys/class/net/$T/operstate" ]; then
+        S="$(cat "/sys/class/net/$T/operstate" 2>/dev/null)"
+        [ "$S" = "up" ] || [ "$S" = "unknown" ]
+        return
+    fi
+
+    U="$(ubus call "network.interface.$T" status 2>/dev/null)"
+    [ "$(printf '%s' "$U" | jsonfilter -e '@.up' 2>/dev/null)" = "true" ]
+}
+
+list_targets() {
+    printf 'TARGET|wan|Direct Internet (WAN)|%s\n' "$(target_up wan && echo 1 || echo 0)"
+
+    if [ "$(uci -q get network.mrouter_ovpn.proto)" = "openvpn" ]; then
+        printf 'TARGET|mrouter_ovpn|OpenVPN|%s\n' "$(target_up mrouter_ovpn && echo 1 || echo 0)"
+    fi
+
+    for IFACE in $(uci show network 2>/dev/null | sed -n 's/^network\.\([^.=]*\)=interface$/\1/p'); do
+        [ "$IFACE" = "wg0" ] && continue
+        [ "$(uci -q get "network.$IFACE.proto")" = "wireguard" ] || continue
+
+        FULL=0
+        for PEER in $(uci show network 2>/dev/null | sed -n "s/^network\.\([^.=]*\)=wireguard_${IFACE}$/\1/p"); do
+            ALLOWED="$(uci -q get "network.$PEER.allowed_ips")"
+            case " $ALLOWED " in
+                *" 0.0.0.0/0 "*) FULL=1 ;;
+            esac
+        done
+
+        [ "$FULL" = "1" ] &&
+            printf 'TARGET|%s|WireGuard - %s|%s\n' "$IFACE" "$IFACE" "$(target_up "$IFACE" && echo 1 || echo 0)"
+    done
+
+    if [ -e /sys/class/net/tailscale0 ]; then
+        EXIT="$(tailscale get exit-node 2>/dev/null | tr -d '\r\n')"
+        [ -n "$EXIT" ] &&
+            printf 'TARGET|tailscale0|Tailscale Exit Node|%s\n' "$(target_up tailscale0 && echo 1 || echo 0)"
+    fi
+}
+
+schedule_active() {
+    MODE="$1"
+    DAYS="$2"
+    START="$3"
+    END="$4"
+
+    [ "$MODE" = "always" ] && return 0
+
+    DOW="$(date +%u)"
+    HM="$(date +%H%M)"
+
+    case "$MODE" in
+        weekdays)
+            [ "$DOW" -le 5 ] || return 1
+            ;;
+        weekends)
+            [ "$DOW" -ge 6 ] || return 1
+            ;;
+        custom)
+            case ",$DAYS," in
+                *",$DOW,"*) ;;
+                *) return 1 ;;
+            esac
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+
+    S="$(printf '%s' "$START" | tr -d ':')"
+    E="$(printf '%s' "$END" | tr -d ':')"
+
+    case "$S$E" in
+        *[!0-9]*) return 0 ;;
+    esac
+
+    if [ "$S" -le "$E" ]; then
+        [ "$HM" -ge "$S" ] && [ "$HM" -lt "$E" ]
+    else
+        [ "$HM" -ge "$S" ] || [ "$HM" -lt "$E" ]
+    fi
+}
+
+refresh_strict() {
+    NEED_STRICT=0
+
+    for M in $(uci show mrouterpolicy 2>/dev/null | sed -n 's/^mrouterpolicy\.\([^.=]*\)=policy$/\1/p'); do
+        # block: never fail open
+        # other: fail to another VPN, but block if both VPNs are unavailable
+        # wan: the only explicitly fail-open mode
+        [ "$(uci -q get "mrouterpolicy.$M.fail_mode")" = "wan" ] || NEED_STRICT=1
+    done
+
+    [ "$NEED_STRICT" = "1" ] &&
+        uci set pbr.config.strict_enforcement='1' ||
+        uci set pbr.config.strict_enforcement='0'
+
+    if dnsmasq --version 2>/dev/null | grep -qi 'nftset'; then
+        uci set pbr.config.resolver_set='dnsmasq.nftset'
+    fi
+
+    uci set pbr.config.webui_show_ignore_target='1'
+    uci commit pbr
+}
+
+restart_pbr() {
+    refresh_strict
+    uci set pbr.config.enabled='1'
+    uci commit pbr
+    /etc/init.d/pbr enable >/dev/null 2>&1 || true
+    /etc/init.d/pbr restart >/dev/null 2>&1 || true
+}
+
+policy_status() {
+    ENABLED="$(uci -q get pbr.config.enabled)"
+    [ "$ENABLED" = "1" ] || ENABLED=0
+
+    RUNNING=0
+    if [ "$ENABLED" = "1" ] && nft list table inet fw4 2>/dev/null | grep -q 'chain pbr_mark_'; then
+        RUNNING=1
+    fi
+
+    STRICT="$(uci -q get pbr.config.strict_enforcement)"
+    [ "$STRICT" = "1" ] || STRICT=0
+
+    RESOLVER="$(uci -q get pbr.config.resolver_set)"
+    DNSNFT=0
+    dnsmasq --version 2>/dev/null | grep -qi 'nftset' && DNSNFT=1
+
+    AGH=0
+    /etc/init.d/adguardhome running >/dev/null 2>&1 && AGH=1
+
+    printf 'STATUS|%s|%s|%s|%s|%s|%s\n' \
+        "$ENABLED" "$RUNNING" "$STRICT" "${RESOLVER:-none}" "$DNSNFT" "$AGH"
+
+    list_targets
+
+    for G in $(uci show mrouterpolicy 2>/dev/null | sed -n 's/^mrouterpolicy\.\([^.=]*\)=group$/\1/p'); do
+        NAME="$(uci -q get "mrouterpolicy.$G.name")"
+        MACS="$(uci -q get "mrouterpolicy.$G.mac")"
+        printf 'GROUP|%s|%s|%s\n' "$G" "$(printf '%s' "$NAME" | tr '|\r\n' '   ')" "$(printf '%s' "$MACS" | tr '|\r\n' '   ')"
+    done
+
+    for SEC in $(uci show pbr 2>/dev/null | sed -n 's/^pbr\.\([^.=]*\)=policy$/\1/p'); do
+        NAME="$(uci -q get "pbr.$SEC.name")"
+        IFACE="$(uci -q get "pbr.$SEC.interface")"
+        SRC="$(uci -q get "pbr.$SEC.src_addr")"
+        DEST="$(uci -q get "pbr.$SEC.dest_addr")"
+        PEN="$(uci -q get "pbr.$SEC.enabled")"
+        [ "$PEN" = "0" ] || PEN=1
+
+        if [ "$(uci -q get "mrouterpolicy.$SEC")" = "policy" ]; then
+            ST="$(uci -q get "mrouterpolicy.$SEC.source_type")"
+            SV="$(uci -q get "mrouterpolicy.$SEC.source_value")"
+            DT="$(uci -q get "mrouterpolicy.$SEC.dest_type")"
+            DV="$(uci -q get "mrouterpolicy.$SEC.dest_value")"
+            DESIRED="$(uci -q get "mrouterpolicy.$SEC.desired_target")"
+            FAIL="$(uci -q get "mrouterpolicy.$SEC.fail_mode")"
+            FALLBACK="$(uci -q get "mrouterpolicy.$SEC.fallback_target")"
+            SCH="$(uci -q get "mrouterpolicy.$SEC.schedule_mode")"
+            DAYS="$(uci -q get "mrouterpolicy.$SEC.schedule_days")"
+            START="$(uci -q get "mrouterpolicy.$SEC.schedule_start")"
+            END="$(uci -q get "mrouterpolicy.$SEC.schedule_end")"
+            EXSEC="$(uci -q get "mrouterpolicy.$SEC.exclude_section")"
+        else
+            ST="legacy"; SV="$SRC"; DT="legacy"; DV="$DEST"; DESIRED="$IFACE"; FAIL="block"; FALLBACK=""; SCH="always"; DAYS=""; START="00:00"; END="23:59"; EXSEC=""
+        fi
+
+        printf 'POLICY|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
+            "$SEC" \
+            "$(printf '%s' "$NAME" | tr '|\r\n' '   ')" \
+            "$IFACE" \
+            "$(printf '%s' "$SRC" | tr '|\r\n' '   ')" \
+            "$(printf '%s' "$DEST" | tr '|\r\n' '   ')" \
+            "$PEN" \
+            "$ST" \
+            "$(printf '%s' "$SV" | tr '|\r\n' '   ')" \
+            "$DT" \
+            "$(printf '%s' "$DV" | tr '|\r\n' '   ')" \
+            "$DESIRED" "$FAIL" "$FALLBACK" "$SCH" "$DAYS" "$START-$END"
+    done
+}
+
+resolve_source() {
+    TYPE="$1"
+    VALUE="$2"
+
+    case "$TYPE" in
+        all)
+            echo "0.0.0.0/0"
+            ;;
+        devices)
+            clean_list "$VALUE"
+            ;;
+        group)
+            group_macs "$VALUE" | tr ',' ' '
+            ;;
+        iot)
+            . /lib/functions/network.sh
+            network_flush_cache
+            network_get_subnet PFX iot
+            [ -n "$PFX" ] && echo "$PFX"
+            ;;
+        wgremote)
+            . /lib/functions/network.sh
+            network_flush_cache
+            network_get_subnet PFX wg0
+            [ -n "$PFX" ] && echo "$PFX"
+            ;;
+        tailscale)
+            echo "@tailscale0"
+            ;;
+        subnet)
+            clean_list "$VALUE"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
+resolve_dest() {
+    TYPE="$1"
+    VALUE="$2"
+
+    case "$TYPE" in
+        all)
+            echo "0.0.0.0/0"
+            ;;
+        custom|exclude)
+            clean_list "$VALUE"
+            ;;
+        service)
+            service_domains "$VALUE"
+            ;;
+        country)
+            CODE="$(printf '%s' "$VALUE" | tr 'A-Z' 'a-z' | tr -cd 'a-z')"
+            [ ${#CODE} -eq 2 ] || return 1
+            echo "https://www.ipdeny.com/ipblocks/data/aggregated/${CODE}-aggregated.zone"
+            ;;
+        subscription)
+            case "$VALUE" in
+                https://*|http://*) echo "$VALUE" ;;
+                *) return 1 ;;
+            esac
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+add_policy() {
+    NAME="$1"
+    STYPE="$2"
+    SVALUE="$3"
+    DTYPE="$4"
+    DVALUE="$5"
+    TARGET="$6"
+    FAIL="$7"
+    FALLBACK="$8"
+    SCH="$9"
+    DAYS="${10}"
+    START="${11}"
+    END="${12}"
+
+    [ -n "$NAME" ] || {
+        echo "Policy name is required"
+        return 1
+    }
+
+    target_exists "$TARGET" || {
+        echo "Routing target is not available"
+        return 1
+    }
+
+    case "$FAIL" in
+        block|wan|other) ;;
+        *) FAIL="block" ;;
+    esac
+
+    if [ "$FAIL" = "other" ]; then
+        target_exists "$FALLBACK" || {
+            echo "Fallback VPN is not available"
+            return 1
+        }
+        [ "$FALLBACK" != "$TARGET" ] || {
+            echo "Fallback target must be different"
+            return 1
+        }
+    fi
+
+    SRC="$(resolve_source "$STYPE" "$SVALUE")"
+    [ -n "$SRC" ] || {
+        echo "Select at least one source"
+        return 1
+    }
+
+    DEST="$(resolve_dest "$DTYPE" "$DVALUE")" || {
+        echo "Invalid destination"
+        return 1
+    }
+
+    [ -n "$DEST" ] || {
+        echo "Destination is empty"
+        return 1
+    }
+
+    # Refuse an exact duplicate rather than creating hidden conflicts.
+    for OLD in $(uci show pbr 2>/dev/null | sed -n 's/^pbr\.\([^.=]*\)=policy$/\1/p'); do
+        [ "$(uci -q get "pbr.$OLD.src_addr")" = "$SRC" ] || continue
+        [ "$(uci -q get "pbr.$OLD.dest_addr")" = "$DEST" ] || continue
+        [ "$(uci -q get "mrouterpolicy.$OLD.desired_target")" = "$TARGET" ] || continue
+        echo "An equivalent policy already exists: $(uci -q get "pbr.$OLD.name")"
+        return 1
+    done
+
+    EXSEC=""
+
+    if [ "$DTYPE" = "exclude" ]; then
+        EXSEC="$(uci add pbr policy)"
+        uci set "pbr.$EXSEC.name=$NAME - exclusions"
+        uci set "pbr.$EXSEC.interface=ignore"
+        uci set "pbr.$EXSEC.proto=all"
+        uci set "pbr.$EXSEC.src_addr=$SRC"
+        uci set "pbr.$EXSEC.dest_addr=$DEST"
+        uci set "pbr.$EXSEC.enabled=1"
+        DEST="0.0.0.0/0"
+    fi
+
+    SEC="$(uci add pbr policy)"
+    uci set "pbr.$SEC.name=$NAME"
+    uci set "pbr.$SEC.interface=$TARGET"
+    uci set "pbr.$SEC.proto=all"
+    uci set "pbr.$SEC.src_addr=$SRC"
+    uci set "pbr.$SEC.dest_addr=$DEST"
+    uci set "pbr.$SEC.enabled=1"
+    uci commit pbr
+
+    uci set "mrouterpolicy.$SEC=policy"
+    uci set "mrouterpolicy.$SEC.source_type=$STYPE"
+    uci set "mrouterpolicy.$SEC.source_value=$SVALUE"
+    uci set "mrouterpolicy.$SEC.dest_type=$DTYPE"
+    uci set "mrouterpolicy.$SEC.dest_value=$DVALUE"
+    uci set "mrouterpolicy.$SEC.desired_target=$TARGET"
+    uci set "mrouterpolicy.$SEC.fail_mode=$FAIL"
+    uci set "mrouterpolicy.$SEC.fallback_target=$FALLBACK"
+    uci set "mrouterpolicy.$SEC.user_enabled=1"
+    uci set "mrouterpolicy.$SEC.schedule_mode=$SCH"
+    uci set "mrouterpolicy.$SEC.schedule_days=$DAYS"
+    uci set "mrouterpolicy.$SEC.schedule_start=$START"
+    uci set "mrouterpolicy.$SEC.schedule_end=$END"
+    [ -n "$EXSEC" ] && uci set "mrouterpolicy.$SEC.exclude_section=$EXSEC"
+    uci commit mrouterpolicy
+
+    restart_pbr
+    echo "Policy created"
+}
+
+delete_policy() {
+    SEC="$(safe_section "$1")"
+    [ "$(uci -q get "pbr.$SEC")" = "policy" ] || {
+        echo "Policy not found"
+        return 1
+    }
+
+    EXSEC="$(uci -q get "mrouterpolicy.$SEC.exclude_section")"
+    [ -n "$EXSEC" ] && uci -q delete "pbr.$EXSEC"
+
+    uci delete "pbr.$SEC"
+    uci -q delete "mrouterpolicy.$SEC"
+    uci commit pbr
+    uci commit mrouterpolicy
+    restart_pbr
+}
+
+toggle_policy() {
+    SEC="$(safe_section "$1")"
+    VALUE="$2"
+    [ "$(uci -q get "pbr.$SEC")" = "policy" ] || return 1
+    [ "$VALUE" = "1" ] || VALUE=0
+
+    uci set "pbr.$SEC.enabled=$VALUE"
+    if [ "$(uci -q get "mrouterpolicy.$SEC")" = "policy" ]; then
+        uci set "mrouterpolicy.$SEC.user_enabled=$VALUE"
+        uci commit mrouterpolicy
+    fi
+    EXSEC="$(uci -q get "mrouterpolicy.$SEC.exclude_section")"
+    [ -n "$EXSEC" ] && uci set "pbr.$EXSEC.enabled=$VALUE"
+    uci commit pbr
+    /etc/init.d/pbr restart >/dev/null 2>&1 || true
+}
+
+move_policy() {
+    SEC="$(safe_section "$1")"
+    DIR="$2"
+
+    ALL="$(uci show pbr 2>/dev/null | sed -n 's/^pbr\.\([^.=]*\)=.*$/\1/p')"
+    POL="$(uci show pbr 2>/dev/null | sed -n 's/^pbr\.\([^.=]*\)=policy$/\1/p')"
+
+    PREV=""
+    NEXT=""
+    FOUND=0
+
+    for X in $POL; do
+        if [ "$FOUND" = "1" ]; then
+            NEXT="$X"
+            break
+        fi
+        if [ "$X" = "$SEC" ]; then
+            FOUND=1
+        else
+            PREV="$X"
+        fi
+    done
+
+    TARGETSEC=""
+    [ "$DIR" = "up" ] && TARGETSEC="$PREV"
+    [ "$DIR" = "down" ] && TARGETSEC="$NEXT"
+    [ -n "$TARGETSEC" ] || return 0
+
+    POS=0
+    for X in $ALL; do
+        if [ "$X" = "$TARGETSEC" ]; then
+            uci reorder "pbr.$SEC=$POS"
+            uci commit pbr
+            /etc/init.d/pbr restart >/dev/null 2>&1 || true
+            return 0
+        fi
+        POS=$((POS + 1))
+    done
+}
+
+group_add() {
+    NAME="$1"
+    MACS="$(clean_list "$2")"
+    [ -n "$NAME" ] || { echo "Group name is required"; return 1; }
+    [ -n "$MACS" ] || { echo "Select at least one device"; return 1; }
+
+    ID="grp_$(date +%s)_$$"
+    uci set "mrouterpolicy.$ID=group"
+    uci set "mrouterpolicy.$ID.name=$NAME"
+    uci set "mrouterpolicy.$ID.mac=$MACS"
+    uci commit mrouterpolicy
+}
+
+group_delete() {
+    ID="$(safe_section "$1")"
+    [ "$(uci -q get "mrouterpolicy.$ID")" = "group" ] || return 1
+    uci delete "mrouterpolicy.$ID"
+    uci commit mrouterpolicy
+}
+
+test_policy() {
+    MAC="$(printf '%s' "$1" | tr 'a-f' 'A-F')"
+    IP="$2"
+    DEST="$3"
+
+    MATCHES=0
+
+    for SEC in $(uci show pbr 2>/dev/null | sed -n 's/^pbr\.\([^.=]*\)=policy$/\1/p'); do
+        [ "$(uci -q get "pbr.$SEC.enabled")" = "0" ] && continue
+
+        NAME="$(uci -q get "pbr.$SEC.name")"
+        SRC="$(uci -q get "pbr.$SEC.src_addr")"
+        DST="$(uci -q get "pbr.$SEC.dest_addr")"
+        TARGET="$(uci -q get "mrouterpolicy.$SEC.desired_target")"
+        [ -n "$TARGET" ] || TARGET="$(uci -q get "pbr.$SEC.interface")"
+        FAIL="$(uci -q get "mrouterpolicy.$SEC.fail_mode")"
+        [ -n "$FAIL" ] || FAIL="block"
+
+        SRCMATCH=0
+        case " $(printf '%s' "$SRC" | tr 'a-f' 'A-F') " in
+            *" $MAC "*) SRCMATCH=1 ;;
+            *" 0.0.0.0/0 "*) SRCMATCH=1 ;;
+        esac
+
+        if [ "$SRC" = "192.168.20.0/24" ]; then
+            case "$IP" in 192.168.20.*) SRCMATCH=1 ;; esac
+        fi
+
+        [ "$SRCMATCH" = "1" ] || continue
+
+        DSTMATCH=0
+        case " $DST " in
+            *" 0.0.0.0/0 "*) DSTMATCH=1 ;;
+        esac
+
+        for TOKEN in $DST; do
+            case "$TOKEN" in
+                http://*|https://*)
+                    # URL/country lists require live PBR/nft evaluation.
+                    ;;
+                *)
+                    case "$DEST" in
+                        "$TOKEN"|*."$TOKEN") DSTMATCH=1 ;;
+                    esac
+                    ;;
+            esac
+        done
+
+        [ "$DSTMATCH" = "1" ] || continue
+
+        MATCHES=$((MATCHES + 1))
+        printf 'TEST|%s|%s|%s|%s|%s\n' "$MATCHES" "$NAME" "$TARGET" "$FAIL" "$SEC"
+    done
+
+    [ "$MATCHES" -gt 0 ] || printf 'TEST|0|No matching policy|wan|wan|\n'
+}
+
+case "$ACTION" in
+status)
+    policy_status
+    ;;
+
+service)
+    VALUE="$2"
+    [ "$VALUE" = "1" ] || VALUE=0
+    uci set "pbr.config.enabled=$VALUE"
+    uci commit pbr
+    if [ "$VALUE" = "1" ]; then restart_pbr; else /etc/init.d/pbr stop >/dev/null 2>&1 || true; fi
+    policy_status
+    ;;
+
+add)
+    add_policy "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}" "${11}" "${12}" "${13}"
+    ;;
+
+delete)
+    delete_policy "$2"
+    policy_status
+    ;;
+
+toggle)
+    toggle_policy "$2" "$3"
+    policy_status
+    ;;
+
+move)
+    move_policy "$2" "$3"
+    policy_status
+    ;;
+
+group-add)
+    group_add "$2" "$3"
+    policy_status
+    ;;
+
+group-delete)
+    group_delete "$2"
+    policy_status
+    ;;
+
+test)
+    test_policy "$2" "$3" "$4"
+    ;;
+
+*)
+    echo "Unknown action"
+    exit 1
+    ;;
+esac

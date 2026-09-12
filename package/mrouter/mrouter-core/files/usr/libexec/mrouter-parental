@@ -1,0 +1,186 @@
+#!/bin/sh
+set -u
+
+ACTION="${1:-status}"
+STATE='/tmp/mrouter-parental.state'
+
+safe_id() { printf '%s' "$1" | tr -cd 'A-Za-z0-9_'; }
+clean_text() { printf '%s' "$1" | tr '|\r\n' '   ' | sed 's/[[:space:]][[:space:]]*/ /g;s/^ //;s/ $//'; }
+valid_mac() { printf '%s\n' "$1" | grep -Eqi '^([0-9a-f]{2}:){5}[0-9a-f]{2}$'; }
+valid_time() { printf '%s\n' "$1" | grep -Eq '^([01][0-9]|2[0-3]):[0-5][0-9]$'; }
+
+has_day() {
+    D="$1"; LIST="$2"
+    case ",$LIST," in *",$D,"*) return 0 ;; *) return 1 ;; esac
+}
+
+profile_active() {
+    S="$1"
+    [ "$(uci -q get mrouterparental.$S.enabled)" = '1' ] || return 1
+    [ "$(uci -q get mrouterparental.$S.paused)" = '1' ] && return 0
+
+    DAYS="$(uci -q get mrouterparental.$S.days)"
+    START="$(uci -q get mrouterparental.$S.start)"
+    END="$(uci -q get mrouterparental.$S.end)"
+    valid_time "$START" || return 1
+    valid_time "$END" || return 1
+
+    TODAY="$(date +%u)"
+    NOW="$(date +%H%M)"
+    SNUM="$(printf '%s' "$START" | tr -d ':')"
+    ENUM="$(printf '%s' "$END" | tr -d ':')"
+
+    if [ "$SNUM" -lt "$ENUM" ]; then
+        has_day "$TODAY" "$DAYS" || return 1
+        [ "$NOW" -ge "$SNUM" ] && [ "$NOW" -lt "$ENUM" ]
+        return
+    fi
+
+    # Overnight period, for example 21:00 -> 07:00.
+    if [ "$NOW" -ge "$SNUM" ]; then
+        has_day "$TODAY" "$DAYS"
+        return
+    fi
+
+    PREV=$((TODAY - 1)); [ "$PREV" -eq 0 ] && PREV=7
+    has_day "$PREV" "$DAYS" && [ "$NOW" -lt "$ENUM" ]
+}
+
+active_macs() {
+    [ "$(uci -q get mrouterparental.config.enabled)" = '1' ] || return 0
+    for S in $(uci show mrouterparental 2>/dev/null | sed -n 's/^mrouterparental\.\([^.=]*\)=profile$/\1/p'); do
+        profile_active "$S" || continue
+        for M in $(uci -q get "mrouterparental.$S.mac" 2>/dev/null); do
+            M="$(printf '%s' "$M" | tr 'a-f' 'A-F')"
+            valid_mac "$M" && printf '%s\n' "$M"
+        done
+    done | sort -u
+}
+
+apply_table() {
+    NEXT="$(active_macs)"
+    OLD="$(cat "$STATE" 2>/dev/null || true)"
+
+    if [ "$NEXT" = "$OLD" ] && nft list table inet mrouter_parental >/dev/null 2>&1; then
+        return 0
+    fi
+
+    nft delete table inet mrouter_parental >/dev/null 2>&1 || true
+    nft -f - <<'NFT'
+table inet mrouter_parental {
+    set paused_macs {
+        type ether_addr
+    }
+    chain forward {
+        type filter hook forward priority -5; policy accept;
+        ether saddr @paused_macs counter drop
+    }
+}
+NFT
+
+    if [ -n "$NEXT" ]; then
+        printf '%s\n' "$NEXT" | while IFS= read -r M; do
+            [ -n "$M" ] || continue
+            nft add element inet mrouter_parental paused_macs "{ $M }" >/dev/null 2>&1 || true
+        done
+    fi
+
+    printf '%s\n' "$NEXT" > "$STATE"
+}
+
+status() {
+    ENABLED="$(uci -q get mrouterparental.config.enabled)"
+    [ "$ENABLED" = 1 ] || ENABLED=0
+    COUNT=0; ACTIVE=0
+    for S in $(uci show mrouterparental 2>/dev/null | sed -n 's/^mrouterparental\.\([^.=]*\)=profile$/\1/p'); do
+        COUNT=$((COUNT + 1))
+        A=0; profile_active "$S" && { A=1; ACTIVE=$((ACTIVE + 1)); }
+    done
+    printf 'STATUS|%s|%s|%s\n' "$ENABLED" "$COUNT" "$ACTIVE"
+
+    for S in $(uci show mrouterparental 2>/dev/null | sed -n 's/^mrouterparental\.\([^.=]*\)=profile$/\1/p'); do
+        A=0; profile_active "$S" && A=1
+        NAME="$(clean_text "$(uci -q get mrouterparental.$S.name)")"
+        EN="$(uci -q get mrouterparental.$S.enabled)"; [ "$EN" = 1 ] || EN=0
+        PA="$(uci -q get mrouterparental.$S.paused)"; [ "$PA" = 1 ] || PA=0
+        DAYS="$(uci -q get mrouterparental.$S.days)"
+        START="$(uci -q get mrouterparental.$S.start)"
+        END="$(uci -q get mrouterparental.$S.end)"
+        MACS="$(uci -q get mrouterparental.$S.mac 2>/dev/null | tr ' ' ',')"
+        printf 'PROFILE|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' "$S" "$NAME" "$EN" "$PA" "$DAYS" "$START" "$END" "$MACS" "$A"
+    done
+}
+
+save_profile() {
+    ID="$(safe_id "${2:-new}")"
+    NAME="$(clean_text "${3:-Family profile}")"
+    EN="${4:-1}"
+    MACS="${5:-}"
+    DAYS="${6:-1,2,3,4,5,6,7}"
+    START="${7:-21:00}"
+    END="${8:-07:00}"
+
+    [ "$ID" = new ] || [ -n "$ID" ] || ID=new
+    if [ "$ID" = new ]; then ID="p_$(date +%s)_$$"; fi
+    valid_time "$START" || { echo 'Invalid start time' >&2; exit 2; }
+    valid_time "$END" || { echo 'Invalid end time' >&2; exit 2; }
+    case "$DAYS" in *[!0-9,]*) echo 'Invalid days' >&2; exit 2 ;; esac
+    [ "$EN" = 1 ] || EN=0
+
+    uci -q delete "mrouterparental.$ID"
+    uci set "mrouterparental.$ID=profile"
+    uci set "mrouterparental.$ID.name=$NAME"
+    uci set "mrouterparental.$ID.enabled=$EN"
+    uci set "mrouterparental.$ID.paused=0"
+    uci set "mrouterparental.$ID.days=$DAYS"
+    uci set "mrouterparental.$ID.start=$START"
+    uci set "mrouterparental.$ID.end=$END"
+    uci -q delete "mrouterparental.$ID.mac"
+
+    OLDIFS="$IFS"; IFS=','
+    for M in $MACS; do
+        IFS="$OLDIFS"
+        M="$(printf '%s' "$M" | tr 'a-f' 'A-F' | tr -d ' ')"
+        valid_mac "$M" && uci add_list "mrouterparental.$ID.mac=$M"
+        IFS=','
+    done
+    IFS="$OLDIFS"
+
+    uci commit mrouterparental
+    rm -f "$STATE"
+    apply_table
+    printf '%s\n' "$ID"
+}
+
+case "$ACTION" in
+status)
+    status
+    ;;
+apply)
+    apply_table
+    status
+    ;;
+enable)
+    V="${2:-1}"; [ "$V" = 1 ] || V=0
+    uci set "mrouterparental.config.enabled=$V"; uci commit mrouterparental
+    rm -f "$STATE"; apply_table; status
+    ;;
+save)
+    save_profile "$@"
+    ;;
+pause)
+    ID="$(safe_id "${2:-}")"; V="${3:-1}"; [ "$V" = 1 ] || V=0
+    uci -q get "mrouterparental.$ID" >/dev/null || exit 2
+    uci set "mrouterparental.$ID.paused=$V"; uci commit mrouterparental
+    rm -f "$STATE"; apply_table; status
+    ;;
+delete)
+    ID="$(safe_id "${2:-}")"; [ -n "$ID" ] || exit 2
+    uci -q delete "mrouterparental.$ID"; uci commit mrouterparental
+    rm -f "$STATE"; apply_table; status
+    ;;
+*)
+    echo 'Usage: mrouter-parental {status|apply|enable 0|1|save id name enabled macs days start end|pause id 0|1|delete id}' >&2
+    exit 2
+    ;;
+esac

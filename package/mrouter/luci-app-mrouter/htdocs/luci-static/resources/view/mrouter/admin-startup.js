@@ -1,0 +1,13 @@
+'use strict';
+'require view';
+'require fs';
+'require ui';
+const HELPER='/usr/libexec/mrouter-advanced';
+function tx(v){return [String(v==null||v===''?'—':v)];}
+function exec(a){return fs.exec(HELPER,a||[]).catch(function(e){return{code:1,stdout:'',stderr:String(e)};});}
+function parse(r){let out=[];String((r&&r.stdout)||'').split(/\r?\n/).forEach(function(l){let p=l.split('|');if(p[0]==='SERVICE')out.push({name:p[1],enabled:p[2]==='1',running:p[3]==='1'});});return out;}
+const DESC={network:'Network interfaces and routes',firewall:'Firewall4 / nftables',dnsmasq:'DHCP and DNS',dropbear:'SSH server',uhttpd:'Web interface',rpcd:'LuCI backend',tailscale:'Tailscale VPN',adguardhome:'AdGuard Home',pbr:'Policy-based routing',sqm:'Smart Queue Management'};
+return view.extend({handleSaveApply:null,handleSave:null,handleReset:null,load:function(){return exec(['snapshot']);},render:function(raw){let list=E('div',{'class':'m-service-admin-list'});parse(raw).forEach(function(s){let action=E('select',{'class':'m-ios-input m-service-action'},[E('option',{'value':''},tx('Actions…')),E('option',{'value':'restart'},tx('Restart')),E('option',{'value':s.running?'stop':'start'},tx(s.running?'Stop':'Start')),E('option',{'value':s.enabled?'disable':'enable'},tx(s.enabled?'Disable at boot':'Enable at boot'))]);action.addEventListener('change',function(){if(!action.value)return;if((s.name==='network'||s.name==='firewall'||s.name==='rpcd'||s.name==='uhttpd')&&!window.confirm('Changing '+s.name+' can interrupt this management session. Continue?')){action.value='';return;}action.disabled=true;exec(['service',s.name,action.value]).then(function(r){if(r.code){action.disabled=false;ui.addNotification(null,E('p',{},tx(r.stderr||'Service action failed.')),'error');}else window.setTimeout(function(){window.location.reload();},500);});});list.appendChild(E('div',{'class':'m-service-admin-row'},[E('div',{},[E('strong',{},tx(s.name)),E('span',{},tx(DESC[s.name]||'System service'))]),E('span',{'class':'m-state-pill '+(s.running?'good':'neutral')},tx(s.running?'Running':'Stopped')),E('span',{'class':'m-state-pill '+(s.enabled?'blue':'neutral')},tx(s.enabled?'Starts at boot':'Manual')),action]));});return E('div',{'class':'mrouter-page'},[
+ E('div',{'class':'m-page-title'},[E('div',{},[E('h2',{},tx('Startup & Services')),E('div',{'class':'m-subtitle'},tx('See what is running and what starts automatically'))]),E('a',{'class':'m-secondary-link-button','href':L.url('admin/advanced/expert/startup')},tx('Expert Init Scripts'))]),
+ E('div',{'class':'m-section'},[E('h3',{},tx('Core Services')),E('p',{'class':'m-muted'},tx('Critical service changes can disconnect the router. Mrouter asks before potentially disruptive actions.')),list])
+]);}});

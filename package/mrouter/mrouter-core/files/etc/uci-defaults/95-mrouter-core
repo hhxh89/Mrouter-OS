@@ -1,0 +1,66 @@
+#!/bin/sh
+
+# Mrouter-OS package-first initialisation.
+# IMPORTANT: installing Mrouter on an existing OpenWrt router must never
+# overwrite WAN/LAN assignments, subnets, DHCP, firewall zones or VLANs.
+# Those choices belong in mrouter-setup and require explicit user action.
+
+uci -q get mrouter.system >/dev/null 2>&1 || uci set mrouter.system='system'
+uci -q get mrouter.ports >/dev/null 2>&1 || uci set mrouter.ports='ports'
+
+if [ "$(uci -q get mrouter.system.initialized)" = 1 ]; then
+    /usr/libexec/mrouter-migrate >/dev/null 2>&1 || true
+    exit 0
+fi
+
+uci set mrouter.system.version='1.0.0'
+uci set mrouter.system.channel='candidate'
+uci set mrouter.system.schema='1202'
+uci set mrouter.system.initialized='1'
+uci set mrouter.system.setup_complete='0'
+uci set mrouter.ports.initialized='0'
+uci set mrouter.ports.pending_reboot='0'
+
+# Protection configs are created, but do not intercept traffic on a stock
+# OpenWrt installation until the user enables them from the UI.
+uci -q get mrouterparental.config >/dev/null 2>&1 || uci set mrouterparental.config='parental'
+[ -n "$(uci -q get mrouterparental.config.enabled)" ] || uci set mrouterparental.config.enabled='0'
+uci -q get mrouterfilter.config >/dev/null 2>&1 || uci set mrouterfilter.config='filter'
+[ -n "$(uci -q get mrouterfilter.config.enabled)" ] || uci set mrouterfilter.config.enabled='0'
+[ -n "$(uci -q get mrouterfilter.config.force_dns)" ] || uci set mrouterfilter.config.force_dns='0'
+[ -n "$(uci -q get mrouterfilter.config.block_dot)" ] || uci set mrouterfilter.config.block_dot='0'
+
+uci -q get mrouterservices.main >/dev/null 2>&1 || uci set mrouterservices.main='general'
+[ -n "$(uci -q get mrouterservices.main.dns_mode)" ] || uci set mrouterservices.main.dns_mode='mrouter'
+[ -n "$(uci -q get mrouterservices.main.pihole_port)" ] || uci set mrouterservices.main.pihole_port='53'
+
+# PBR remains opt-in. Do not change user networking or routes here.
+if uci -q get pbr.config >/dev/null 2>&1; then
+    [ -n "$(uci -q get pbr.config.enabled)" ] || uci set pbr.config.enabled='0'
+    [ -n "$(uci -q get pbr.config.strict_enforcement)" ] || uci set pbr.config.strict_enforcement='0'
+    [ -n "$(uci -q get pbr.config.resolver_set)" ] || uci set pbr.config.resolver_set='dnsmasq.nftset'
+    uci commit pbr
+fi
+
+# nlbwmon is still useful for client totals, but no longer drives a fake live
+# Internet chart. Only tune refresh timing; preserve all user network lists.
+if uci -q get nlbwmon.@nlbwmon[0] >/dev/null 2>&1; then
+    uci set nlbwmon.@nlbwmon[0].refresh_interval='5s'
+    uci set nlbwmon.@nlbwmon[0].commit_interval='24h'
+    uci commit nlbwmon
+fi
+
+uci commit mrouter
+uci commit mrouterparental
+uci commit mrouterfilter
+uci commit mrouterservices
+
+# Non-destructive helper services. DNS/VPN/PBR/AdGuard remain opt-in.
+/etc/init.d/mrouter-connectivity enable >/dev/null 2>&1 || true
+/etc/init.d/mrouter-ddns enable >/dev/null 2>&1 || true
+/etc/init.d/mrouter-policy-monitor enable >/dev/null 2>&1 || true
+/etc/init.d/mrouter-ttyd enable >/dev/null 2>&1 || true
+/etc/init.d/mrouter-parental enable >/dev/null 2>&1 || true
+/etc/init.d/mrouter-content-filter enable >/dev/null 2>&1 || true
+
+exit 0

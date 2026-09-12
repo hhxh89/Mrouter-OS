@@ -1,0 +1,117 @@
+#!/bin/sh
+set -u
+ACTION="${1:-status}"
+. /lib/functions/network.sh 2>/dev/null || true
+
+physical_nics() {
+    for P in /sys/class/net/*; do
+        [ -e "$P" ] || continue
+        N="${P##*/}"
+        [ "$N" = "lo" ] && continue
+        [ -e "$P/device" ] || continue
+        case "$N" in br-*|docker*|veth*|ifb*|tun*|tap*|wg*|tailscale*|zt*) continue ;; esac
+        printf '%s\n' "$N"
+    done | sort
+}
+esc() { printf '%s' "$1" | tr '|\r\n' '   '; }
+
+get_roles() {
+    WANDEV=''; LANDEV=''; LANIP=''; LANSUB=''; IOTSUB=''; IOTDEV=''
+    network_get_device WANDEV wan 2>/dev/null || true
+    network_get_device LANDEV lan 2>/dev/null || true
+    network_get_ipaddr LANIP lan 2>/dev/null || true
+    network_get_subnet LANSUB lan 2>/dev/null || true
+    network_get_device IOTDEV iot 2>/dev/null || true
+    network_get_subnet IOTSUB iot 2>/dev/null || true
+    [ -n "$WANDEV" ] || WANDEV="$(uci -q get network.wan.device || uci -q get network.wan.ifname || true)"
+    [ -n "$LANDEV" ] || LANDEV="$(uci -q get network.lan.device || uci -q get network.lan.ifname || true)"
+    [ -n "$LANIP" ] || LANIP="$(uci -q get network.lan.ipaddr || true)"
+    [ -n "$LANSUB" ] || LANSUB="${LANIP:+$LANIP/24}"
+}
+
+is_lan_port() {
+    D="$1"
+    [ "$D" = "$LANDEV" ] && return 0
+    [ -d "/sys/class/net/$LANDEV/brif/$D" ] && return 0
+    for S in $(uci show network 2>/dev/null | sed -n 's/^network\.\([^.=]*\)=device$/\1/p'); do
+        [ "$(uci -q get network.$S.name)" = "$LANDEV" ] || continue
+        for P in $(uci -q get network.$S.ports 2>/dev/null); do [ "$P" = "$D" ] && return 0; done
+    done
+    return 1
+}
+
+role_for() {
+    D="$1"
+    [ "$D" = "$WANDEV" ] && { echo WAN; return; }
+    is_lan_port "$D" && { echo LAN; return; }
+    echo Unassigned
+}
+
+status() {
+    get_roles
+    MW="$(uci -q get mrouter.ports.wan_device || true)"
+    ML="$(uci -q get mrouter.ports.lan_device || true)"
+    INIT=0
+    [ -n "$WANDEV" ] && [ -n "$LANDEV" ] && INIT=1
+    PENDING="$(uci -q get mrouter.ports.pending_reboot || true)"; [ "$PENDING" = 1 ] || PENDING=0
+    COUNT="$(physical_nics | sed '/^$/d' | wc -l | tr -d ' ')"
+    IOT=0; [ -n "$IOTSUB" ] && IOT=1
+    printf 'STATUS|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' "$INIT" "$PENDING" "$COUNT" "$WANDEV" "$LANDEV" "$LANIP" "$LANSUB" "$IOT" "$IOTSUB"
+    [ -n "$MW$ML" ] && printf 'SAVED|%s|%s\n' "$MW" "$ML"
+    physical_nics | while IFS= read -r D; do
+        STATE="$(cat /sys/class/net/$D/operstate 2>/dev/null || echo unknown)"
+        SPEED="$(cat /sys/class/net/$D/speed 2>/dev/null || true)"
+        case "$SPEED" in ''|*[!0-9]*) SPEED='—' ;; *) SPEED="${SPEED} Mbps" ;; esac
+        DRIVER="$(basename "$(readlink -f /sys/class/net/$D/device/driver 2>/dev/null)" 2>/dev/null || true)"
+        MAC="$(cat /sys/class/net/$D/address 2>/dev/null || true)"
+        printf 'PORT|%s|%s|%s|%s|%s|%s\n' "$D" "$(role_for "$D")" "$STATE" "$SPEED" "$(esc "${DRIVER:-unknown}")" "$MAC"
+    done
+}
+
+set_bridge_port() {
+    D="$1"
+    for S in $(uci show network 2>/dev/null | sed -n "s/^network\.\([^.=]*\)\.name='br-lan'$/\1/p"); do [ "$S" = br_lan ] || uci -q delete "network.$S"; done
+    uci -q delete network.br_lan
+    uci set network.br_lan='device'
+    uci set network.br_lan.name='br-lan'
+    uci set network.br_lan.type='bridge'
+    uci add_list network.br_lan.ports="$D"
+}
+
+save_roles() {
+    W="$1"; L="$2"
+    [ -e "/sys/class/net/$W/device" ] || { echo 'WAN device not found'; return 1; }
+    [ -e "/sys/class/net/$L/device" ] || { echo 'LAN device not found'; return 1; }
+    [ "$W" != "$L" ] || { echo 'WAN and LAN must use different ports'; return 1; }
+    set_bridge_port "$L"
+    uci set network.lan='interface'
+    uci set network.lan.device='br-lan'
+    uci set network.lan.proto='static'
+    uci set network.lan.ipaddr="$(uci -q get network.lan.ipaddr || echo 192.168.8.1)"
+    uci set network.lan.netmask="$(uci -q get network.lan.netmask || echo 255.255.255.0)"
+    uci set network.wan='interface'
+    uci set network.wan.device="$W"
+    [ -n "$(uci -q get network.wan.proto || true)" ] || uci set network.wan.proto='dhcp'
+    uci set mrouter.ports.wan_device="$W"
+    uci set mrouter.ports.lan_device="$L"
+    uci set mrouter.ports.initialized='1'
+    uci set mrouter.ports.pending_reboot='1'
+    uci commit network
+    uci commit mrouter
+}
+
+case "$ACTION" in
+status) status ;;
+swap)
+    get_roles
+    W="$WANDEV"; L=""
+    for D in $(physical_nics); do is_lan_port "$D" && { L="$D"; break; }; done
+    [ -n "$W" ] && [ -n "$L" ] || { echo 'Current WAN/LAN roles cannot be identified safely'; exit 1; }
+    save_roles "$L" "$W" || exit 1
+    echo 'Port roles saved in reverse. Reboot Mrouter-OS to apply the new physical-port assignment.'
+    status
+    ;;
+set) save_roles "$2" "$3" || exit 1; echo 'Port roles saved. Reboot Mrouter-OS to apply them.'; status ;;
+clear-pending) uci set mrouter.ports.pending_reboot='0'; uci commit mrouter; status ;;
+*) exit 1 ;;
+esac

@@ -1,0 +1,132 @@
+#!/bin/sh
+set -u
+ACTION="${1:-status}"
+BACKROOT='/etc/mrouter/setup-backups'
+mkdir -p "$BACKROOT"
+
+valid_dev() { [ -n "$1" ] && [ -e "/sys/class/net/$1" ] && [ "$1" != lo ]; }
+valid_ipv4() { printf '%s\n' "$1" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}$'; }
+
+list_devs() {
+    for P in /sys/class/net/*; do
+        [ -e "$P" ] || continue
+        N="${P##*/}"
+        case "$N" in lo|br-*|ifb*|veth*|tun*|tap*|wg*|tailscale*|zt*) continue ;; esac
+        printf 'DEV|%s|%s\n' "$N" "$(cat "$P/address" 2>/dev/null || true)"
+    done
+}
+
+status() {
+    DONE="$(uci -q get mrouter.system.setup_complete)"; [ "$DONE" = 1 ] || DONE=0
+    PENDING="$(uci -q get mrouter.ports.pending_reboot)"; [ "$PENDING" = 1 ] || PENDING=0
+    LANDEV="$(uci -q get network.lan.device)"; WANDEV="$(uci -q get network.wan.device)"
+    LANIP="$(uci -q get network.lan.ipaddr)"
+    LATEST="$(find "$BACKROOT" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | tail -n1)"
+    MODE="$(uci -q get mrouter.system.setup_mode)"; [ -n "$MODE" ] || MODE=unknown
+    printf 'STATUS|%s|%s|%s|%s|%s|%s|%s\n' "$DONE" "$PENDING" "$LANDEV" "$WANDEV" "$LANIP" "$LATEST" "$MODE"
+    list_devs
+}
+
+backup_now() {
+    STAMP="$(date +%Y%m%d-%H%M%S)"
+    DIR="$BACKROOT/$STAMP"
+    mkdir -p "$DIR"
+    cp -p /etc/config/network "$DIR/network" 2>/dev/null || true
+    cp -p /etc/config/dhcp "$DIR/dhcp" 2>/dev/null || true
+    cp -p /etc/config/firewall "$DIR/firewall" 2>/dev/null || true
+    printf '%s\n' "$DIR"
+}
+
+keep_current() {
+    uci set mrouter.system.setup_complete='1'
+    uci set mrouter.system.setup_mode='keep'
+    uci set mrouter.ports.pending_reboot='0'
+    uci commit mrouter
+    status
+}
+
+apply_twoport() {
+    WAN="${2:-}"; LAN="${3:-}"; LANIP="${4:-192.168.8.1}"; IOT="${5:-0}"
+    valid_dev "$WAN" || { echo 'Invalid WAN device' >&2; exit 1; }
+    valid_dev "$LAN" || { echo 'Invalid LAN device' >&2; exit 1; }
+    [ "$WAN" != "$LAN" ] || { echo 'WAN and LAN devices must be different' >&2; exit 1; }
+    valid_ipv4 "$LANIP" || { echo 'Invalid LAN IPv4 address' >&2; exit 1; }
+    [ "$IOT" = 1 ] || IOT=0
+    BACKUP="$(backup_now)"
+
+    for S in $(uci show network 2>/dev/null | sed -n "s/^network\.\([^.=]*\)\.name='br-lan'$/\1/p"); do uci -q delete "network.$S"; done
+    uci set network.br_lan='device'
+    uci set network.br_lan.name='br-lan'
+    uci set network.br_lan.type='bridge'
+    uci add_list network.br_lan.ports="$LAN"
+    uci set network.lan='interface'
+    uci set network.lan.device='br-lan'
+    uci set network.lan.proto='static'
+    uci set network.lan.ipaddr="$LANIP"
+    uci set network.lan.netmask='255.255.255.0'
+    uci -q delete network.lan.gateway
+    uci -q delete network.lan.dns
+    uci set network.wan='interface'
+    uci set network.wan.device="$WAN"
+    uci set network.wan.proto='dhcp'
+
+    uci set dhcp.lan='dhcp'
+    uci set dhcp.lan.interface='lan'
+    uci set dhcp.lan.start='100'
+    uci set dhcp.lan.limit='150'
+    uci set dhcp.lan.leasetime='12h'
+    uci set dhcp.lan.ignore='0'
+
+    # Ensure LAN/WAN firewall zones exist but do not remove unrelated user zones.
+    LAN_ZONE=''; WAN_ZONE=''
+    for Z in $(uci show firewall 2>/dev/null | sed -n 's/^firewall\.\([^.=]*\)=zone$/\1/p'); do
+        case "$(uci -q get firewall.$Z.name)" in lan) LAN_ZONE="$Z" ;; wan) WAN_ZONE="$Z" ;; esac
+    done
+    [ -n "$LAN_ZONE" ] || { LAN_ZONE='mrouter_lan_zone'; uci set firewall.$LAN_ZONE='zone'; uci set firewall.$LAN_ZONE.name='lan'; uci set firewall.$LAN_ZONE.input='ACCEPT'; uci set firewall.$LAN_ZONE.output='ACCEPT'; uci set firewall.$LAN_ZONE.forward='ACCEPT'; }
+    uci -q delete firewall.$LAN_ZONE.network; uci add_list firewall.$LAN_ZONE.network='lan'
+    [ -n "$WAN_ZONE" ] || { WAN_ZONE='mrouter_wan_zone'; uci set firewall.$WAN_ZONE='zone'; uci set firewall.$WAN_ZONE.name='wan'; uci set firewall.$WAN_ZONE.input='REJECT'; uci set firewall.$WAN_ZONE.output='ACCEPT'; uci set firewall.$WAN_ZONE.forward='REJECT'; }
+    uci -q delete firewall.$WAN_ZONE.network; uci add_list firewall.$WAN_ZONE.network='wan'; uci set firewall.$WAN_ZONE.masq='1'; uci set firewall.$WAN_ZONE.mtu_fix='1'
+    FOUND=0
+    for F in $(uci show firewall 2>/dev/null | sed -n 's/^firewall\.\([^.=]*\)=forwarding$/\1/p'); do [ "$(uci -q get firewall.$F.src)" = lan ] && [ "$(uci -q get firewall.$F.dest)" = wan ] && FOUND=1; done
+    [ "$FOUND" = 1 ] || { uci set firewall.mrouter_lan_wan='forwarding'; uci set firewall.mrouter_lan_wan.src='lan'; uci set firewall.mrouter_lan_wan.dest='wan'; }
+
+    if [ "$IOT" = 1 ]; then
+        uci set network.mrouter_iot_vlan='device'; uci set network.mrouter_iot_vlan.type='8021q'; uci set network.mrouter_iot_vlan.ifname='br-lan'; uci set network.mrouter_iot_vlan.vid='20'; uci set network.mrouter_iot_vlan.name='br-lan.20'
+        uci set network.iot='interface'; uci set network.iot.proto='static'; uci set network.iot.device='br-lan.20'; uci set network.iot.ipaddr='192.168.20.1'; uci set network.iot.netmask='255.255.255.0'
+        uci set dhcp.iot='dhcp'; uci set dhcp.iot.interface='iot'; uci set dhcp.iot.start='100'; uci set dhcp.iot.limit='150'; uci set dhcp.iot.leasetime='12h'; uci set dhcp.iot.ignore='0'
+        uci set firewall.iot='zone'; uci set firewall.iot.name='iot'; uci -q delete firewall.iot.network; uci add_list firewall.iot.network='iot'; uci set firewall.iot.input='REJECT'; uci set firewall.iot.output='ACCEPT'; uci set firewall.iot.forward='REJECT'
+        uci set firewall.iot_wan='forwarding'; uci set firewall.iot_wan.src='iot'; uci set firewall.iot_wan.dest='wan'
+        uci set firewall.iot_dns='rule'; uci set firewall.iot_dns.name='Allow-DNS-IoT'; uci set firewall.iot_dns.src='iot'; uci set firewall.iot_dns.dest_port='53'; uci set firewall.iot_dns.proto='tcp udp'; uci set firewall.iot_dns.target='ACCEPT'
+        uci set firewall.iot_dhcp='rule'; uci set firewall.iot_dhcp.name='Allow-DHCP-IoT'; uci set firewall.iot_dhcp.src='iot'; uci set firewall.iot_dhcp.src_port='68'; uci set firewall.iot_dhcp.dest_port='67'; uci set firewall.iot_dhcp.proto='udp'; uci set firewall.iot_dhcp.family='ipv4'; uci set firewall.iot_dhcp.target='ACCEPT'
+        uci set firewall.iot_block_lan='rule'; uci set firewall.iot_block_lan.name='Block-IoT-to-LAN'; uci set firewall.iot_block_lan.src='iot'; uci set firewall.iot_block_lan.dest='lan'; uci set firewall.iot_block_lan.proto='all'; uci set firewall.iot_block_lan.target='REJECT'
+    fi
+
+    uci set mrouter.ports.wan_device="$WAN"
+    uci set mrouter.ports.lan_device="$LAN"
+    uci set mrouter.ports.initialized='1'
+    uci set mrouter.ports.pending_reboot='1'
+    uci set mrouter.system.setup_complete='1'
+    uci set mrouter.system.setup_mode='twoport'
+    uci commit network; uci commit dhcp; uci commit firewall; uci commit mrouter
+    printf 'SAVED|%s\n' "$BACKUP"
+    status
+}
+
+rollback_latest() {
+    DIR="$(find "$BACKROOT" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | tail -n1)"
+    [ -n "$DIR" ] || { echo 'No setup backup found' >&2; exit 1; }
+    [ -f "$DIR/network" ] && cp -f "$DIR/network" /etc/config/network
+    [ -f "$DIR/dhcp" ] && cp -f "$DIR/dhcp" /etc/config/dhcp
+    [ -f "$DIR/firewall" ] && cp -f "$DIR/firewall" /etc/config/firewall
+    uci set mrouter.ports.pending_reboot='1'; uci commit mrouter
+    printf 'ROLLED_BACK|%s\n' "$DIR"
+    status
+}
+
+case "$ACTION" in
+    status) status ;;
+    keep) keep_current ;;
+    twoport) apply_twoport "$@" ;;
+    rollback) rollback_latest ;;
+    *) echo 'Usage: mrouter-setup {status|keep|twoport WAN_DEV LAN_DEV LAN_IP IOT_0_1|rollback}' >&2; exit 2 ;;
+esac

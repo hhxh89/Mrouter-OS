@@ -1,0 +1,105 @@
+{
+  "mrouter-ui": {
+    "description": "Mrouter-OS interface",
+    "read": {
+      "file": {
+        "/usr/libexec/mrouter-internet-info": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-client-data": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-iot-info": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-status-adguard": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-status-tailscale": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-status-wireguard": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-status-openvpn": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-status-policy": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-status-ddns": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-status-health": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-status-ports": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-status-parental": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-status-content-filter": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-services": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-advanced": [
+          "exec"
+        ]
+      },
+      "ubus": {
+        "luci-rpc": [
+          "getDHCPLeases"
+        ]
+      }
+    },
+    "write": {
+      "cgi-io": [
+        "upload"
+      ],
+      "file": {
+        "/tmp/mrouter-openvpn-upload": [
+          "write"
+        ],
+        "/usr/libexec/mrouter-client-action": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-adguard": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-tailscale": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-wireguard": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-openvpn": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-policy": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-ddns": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-ports": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-parental": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-content-filter": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-services": [
+          "exec"
+        ],
+        "/usr/libexec/mrouter-advanced": [
+          "exec"
+        ]
+      }
+    }
+  }
+}

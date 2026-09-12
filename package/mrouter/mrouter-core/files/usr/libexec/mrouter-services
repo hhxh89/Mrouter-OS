@@ -1,0 +1,132 @@
+#!/bin/sh
+set -u
+
+ACTION="${1:-status}"
+CFG='mrouterservices'
+
+safe_id() { printf '%s' "$1" | tr -cd 'A-Za-z0-9_'; }
+valid_host() { [ -n "$1" ] && printf '%s\n' "$1" | grep -Eq '^[A-Za-z0-9._:-]+$'; }
+valid_port() { case "$1" in ''|*[!0-9]*) return 1;; esac; [ "$1" -ge 1 ] && [ "$1" -le 65535 ]; }
+valid_scheme() { [ "$1" = http ] || [ "$1" = https ]; }
+valid_name() { [ -n "$1" ] && ! printf '%s' "$1" | grep -Fq '|'; }
+valid_type() {
+    case "$1" in pihole|homeassistant|proxmox|immich|jellyfin|plex|truenas|synology|openmediavault|portainer|grafana|custom) return 0;; *) return 1;; esac
+}
+
+status_all() {
+    MODE="$(uci -q get $CFG.main.dns_mode)"; [ -n "$MODE" ] || MODE=mrouter
+    PH="$(uci -q get $CFG.main.pihole_host)"
+    PP="$(uci -q get $CFG.main.pihole_port)"; valid_port "${PP:-}" || PP=53
+    printf 'DNS|%s|%s|%s\n' "$MODE" "$PH" "$PP"
+    for ID in $(uci show "$CFG" 2>/dev/null | sed -n "s/^$CFG\.\([^.=]*\)=service$/\1/p"); do
+        T="$(uci -q get "$CFG.$ID.type")"
+        N="$(uci -q get "$CFG.$ID.name")"
+        H="$(uci -q get "$CFG.$ID.host")"
+        P="$(uci -q get "$CFG.$ID.port")"
+        S="$(uci -q get "$CFG.$ID.scheme")"
+        printf 'SERVICE|%s|%s|%s|%s|%s|%s\n' "$ID" "$T" "$N" "$H" "$P" "$S"
+    done
+}
+
+add_service() {
+    T="${2:-custom}"; N="${3:-Local service}"; H="${4:-}"; P="${5:-80}"; S="${6:-http}"
+    case "$H" in http://*) S=http; H="${H#http://}" ;; https://*) S=https; H="${H#https://}" ;; esac
+    H="${H%%/*}"
+    case "$H" in *:*)
+        HP="${H##*:}"; BASE="${H%:*}"
+        case "$HP" in ''|*[!0-9]*) : ;; *) [ -n "$BASE" ] && { H="$BASE"; P="$HP"; } ;; esac
+    esac
+    valid_type "$T" || { echo 'Unsupported service type' >&2; exit 1; }
+    valid_name "$N" || { echo 'Invalid service name' >&2; exit 1; }
+    valid_host "$H" || { echo 'Invalid host or IP address' >&2; exit 1; }
+    valid_port "$P" || { echo 'Invalid port' >&2; exit 1; }
+    valid_scheme "$S" || { echo 'Invalid protocol' >&2; exit 1; }
+    ID="svc_$(date +%s)_$$"; ID="$(safe_id "$ID")"
+    uci set "$CFG.$ID=service"
+    uci set "$CFG.$ID.type=$T"
+    uci set "$CFG.$ID.name=$N"
+    uci set "$CFG.$ID.host=$H"
+    uci set "$CFG.$ID.port=$P"
+    uci set "$CFG.$ID.scheme=$S"
+    uci commit "$CFG"
+    status_all
+}
+
+delete_service() {
+    ID="$(safe_id "${2:-}")"
+    [ "$(uci -q get "$CFG.$ID")" = service ] || exit 1
+    uci delete "$CFG.$ID"; uci commit "$CFG"; status_all
+}
+
+test_service() {
+    ID="$(safe_id "${2:-}")"
+    [ "$(uci -q get "$CFG.$ID")" = service ] || { echo 'Unknown service' >&2; exit 1; }
+    H="$(uci -q get "$CFG.$ID.host")"; P="$(uci -q get "$CFG.$ID.port")"; S="$(uci -q get "$CFG.$ID.scheme")"
+    CODE="$(curl -k -sS -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 "$S://$H:$P/" 2>/dev/null || true)"
+    case "$CODE" in ''|000) printf 'TEST|0|%s\n' "${CODE:-000}"; exit 1;; *) printf 'TEST|1|%s\n' "$CODE";; esac
+}
+
+use_pihole() {
+    H="${2:-}"; P="${3:-53}"
+    valid_host "$H" || { echo 'Invalid Pi-hole host or IP address' >&2; exit 1; }
+    valid_port "$P" || { echo 'Invalid Pi-hole DNS port' >&2; exit 1; }
+    LANIP="$(uci -q get network.lan.ipaddr)"
+    [ "$H" != "$LANIP" ] || { echo 'Pi-hole cannot be the router itself.' >&2; exit 1; }
+
+    # Pi-hole mode is explicit. Disable AdGuard if it is currently the client-facing resolver.
+    if /etc/init.d/adguardhome running >/dev/null 2>&1; then
+        /usr/libexec/mrouter-adguard disable >/dev/null 2>&1 || true
+    fi
+    uci set dhcp.@dnsmasq[0].port='53'
+    uci set dhcp.@dnsmasq[0].noresolv='1'
+    uci -q delete dhcp.@dnsmasq[0].server
+    uci add_list "dhcp.@dnsmasq[0].server=$H#$P"
+    uci commit dhcp
+    /etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
+
+    uci set "$CFG.main.dns_mode=pihole"
+    uci set "$CFG.main.pihole_host=$H"
+    uci set "$CFG.main.pihole_port=$P"
+    uci commit "$CFG"
+    status_all
+}
+
+use_mrouter_dns() {
+    # Ensure the default encrypted upstreams exist even on a stock OpenWrt install.
+    uci -q get https-dns-proxy.config >/dev/null 2>&1 || uci set https-dns-proxy.config='main'
+    uci set https-dns-proxy.config.listen_addr='127.0.0.1'
+    uci set https-dns-proxy.config.user='nobody'
+    uci set https-dns-proxy.config.group='nogroup'
+    uci -q get https-dns-proxy.cloudflare >/dev/null 2>&1 || uci set https-dns-proxy.cloudflare='https-dns-proxy'
+    uci set https-dns-proxy.cloudflare.bootstrap_dns='1.1.1.1,1.0.0.1'
+    uci set https-dns-proxy.cloudflare.resolver_url='https://cloudflare-dns.com/dns-query'
+    uci set https-dns-proxy.cloudflare.listen_port='5053'
+    uci -q get https-dns-proxy.google >/dev/null 2>&1 || uci set https-dns-proxy.google='https-dns-proxy'
+    uci set https-dns-proxy.google.bootstrap_dns='8.8.8.8,8.8.4.4'
+    uci set https-dns-proxy.google.resolver_url='https://dns.google/dns-query'
+    uci set https-dns-proxy.google.listen_port='5054'
+    uci commit https-dns-proxy
+
+    uci set dhcp.@dnsmasq[0].port='53'
+    uci set dhcp.@dnsmasq[0].noresolv='1'
+    uci -q delete dhcp.@dnsmasq[0].server
+    uci add_list dhcp.@dnsmasq[0].server='127.0.0.1#5053'
+    uci add_list dhcp.@dnsmasq[0].server='127.0.0.1#5054'
+    uci commit dhcp
+    /etc/init.d/https-dns-proxy enable >/dev/null 2>&1 || true
+    /etc/init.d/https-dns-proxy restart >/dev/null 2>&1 || true
+    /etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
+    uci set "$CFG.main.dns_mode=mrouter"
+    uci commit "$CFG"
+    status_all
+}
+
+case "$ACTION" in
+    status) status_all ;;
+    add) add_service "$@" ;;
+    delete) delete_service "$@" ;;
+    test) test_service "$@" ;;
+    dns-pihole) use_pihole "$@" ;;
+    dns-mrouter) use_mrouter_dns ;;
+    *) echo 'Usage: mrouter-services {status|add type name host port http|https|delete id|test id|dns-pihole host port|dns-mrouter}' >&2; exit 2 ;;
+esac

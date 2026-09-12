@@ -1,0 +1,442 @@
+#!/bin/sh
+
+ACTION="${1:-status}"
+
+AUTH_CACHE="/tmp/mrouter-tailscale-auth-url"
+DEFAULT_MARKER="/etc/mrouter/tailscale-lan-only"
+
+
+bool_word() {
+    [ "$1" = "1" ] && echo true || echo false
+}
+
+
+ts_json() {
+    tailscale status --json 2>/dev/null || true
+}
+
+
+json_one() {
+    JSON="$1"
+    EXPR="$2"
+
+    printf '%s' "$JSON" |
+        jsonfilter -e "$EXPR" 2>/dev/null |
+        head -n1
+}
+
+
+pref_bool() {
+    V="$(
+        tailscale get "$1" 2>/dev/null |
+        tr -d '[:space:]'
+    )"
+
+    case "$V" in
+        true|1|yes|on)
+            echo 1
+            ;;
+        *)
+            echo 0
+            ;;
+    esac
+}
+
+
+pref_routes() {
+    tailscale get advertise-routes 2>/dev/null |
+        tr -d '[]" ' |
+        tr '\n' ',' |
+        sed 's/,$//'
+}
+
+
+route_contains() {
+    LIST="$1"
+    NEEDLE="$2"
+
+    [ -n "$NEEDLE" ] || return 1
+
+    case ",$LIST," in
+        *",$NEEDLE,"*)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+
+enable_forwarding() {
+    cat > /etc/sysctl.d/90-mrouter-tailscale.conf <<'EOT'
+net.ipv4.ip_forward=1
+net.ipv6.conf.all.forwarding=1
+EOT
+
+    sysctl -w net.ipv4.ip_forward=1 \
+        >/dev/null 2>&1 || true
+
+    sysctl -w net.ipv6.conf.all.forwarding=1 \
+        >/dev/null 2>&1 || true
+}
+
+
+# Return the actual connected NETWORK prefix, not the router host
+# address. Example:
+#   br-lan address 192.168.8.1/24
+#   -> 192.168.11.0/24
+network_prefix() {
+    NAME="$1"
+
+    . /lib/functions/network.sh
+    network_flush_cache
+
+    DEV=""
+    network_get_device DEV "$NAME"
+
+    [ -n "$DEV" ] || \
+        DEV="$(uci -q get "network.$NAME.device")"
+
+    [ -n "$DEV" ] || return 0
+
+    PREFIX="$(
+        ip -4 route show dev "$DEV" 2>/dev/null |
+        awk '
+            $1 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\/[0-9]+$/ {
+                print $1
+                exit
+            }
+        '
+    )"
+
+    printf '%s' "$PREFIX"
+}
+
+
+find_auth_url() {
+    OUTPUT="$1"
+
+    URL="$(
+        printf '%s\n' "$OUTPUT" |
+        grep -Eo \
+            'https://login\.tailscale\.com/[^"[:space:]]+' |
+        head -n1
+    )"
+
+    if [ -z "$URL" ]; then
+        JSON="$(ts_json)"
+        URL="$(json_one "$JSON" '@.AuthURL')"
+    fi
+
+    if [ -z "$URL" ]; then
+        URL="$(
+            logread 2>/dev/null |
+            grep -Eo \
+                'https://login\.tailscale\.com/[^"[:space:]]+' |
+            tail -n1
+        )"
+    fi
+
+    if [ -n "$URL" ]; then
+        printf '%s\n' "$URL" > "$AUTH_CACHE"
+    fi
+
+    printf '%s' "$URL"
+}
+
+
+apply_default_router_settings() {
+    LAN_NET="$(network_prefix lan)"
+
+    [ -n "$LAN_NET" ] || {
+        echo "Unable to determine the LAN network prefix." >&2
+        return 1
+    }
+
+    enable_forwarding
+
+    # LAN ONLY.
+    # This explicitly withdraws any previously advertised IoT/WAN route.
+    tailscale set \
+        --hostname=Mrouter-OS \
+        --accept-dns=false \
+        --accept-routes=false \
+        --snat-subnet-routes=true \
+        --advertise-exit-node=false \
+        "--advertise-routes=$LAN_NET" \
+        >/tmp/mrouter-tailscale-defaults.log \
+        2>&1 || {
+            cat /tmp/mrouter-tailscale-defaults.log >&2
+            return 1
+        }
+
+    {
+        echo "lan=$LAN_NET"
+        echo "applied=$(date)"
+    } > "$DEFAULT_MARKER"
+
+    return 0
+}
+
+
+status_data() {
+    ENABLED=0
+    SERVICE=0
+
+    /etc/init.d/tailscale enabled \
+        >/dev/null 2>&1 &&
+        ENABLED=1
+
+    /etc/init.d/tailscale running \
+        >/dev/null 2>&1 &&
+        SERVICE=1
+
+    JSON="$(ts_json)"
+
+    BACKEND="$(json_one "$JSON" '@.BackendState')"
+
+    CONNECTED=0
+    [ "$BACKEND" = "Running" ] &&
+        CONNECTED=1
+
+    AUTH_URL="$(json_one "$JSON" '@.AuthURL')"
+
+    [ -n "$AUTH_URL" ] || \
+        AUTH_URL="$(cat "$AUTH_CACHE" 2>/dev/null || true)"
+
+    if [ "$CONNECTED" = "1" ]; then
+        AUTH_URL=""
+        rm -f "$AUTH_CACHE"
+    fi
+
+    IP="$(
+        tailscale ip -4 2>/dev/null |
+        head -n1
+    )"
+
+    ACCOUNT="$(json_one "$JSON" '@.User[*].LoginName')"
+    TAILNET="$(json_one "$JSON" '@.CurrentTailnet.Name')"
+    HOSTNAME="$(json_one "$JSON" '@.Self.HostName')"
+
+    LAN_NET="$(network_prefix lan)"
+
+    ROUTES="$(pref_routes)"
+
+    ADV_LAN=0
+    route_contains "$ROUTES" "$LAN_NET" &&
+        ADV_LAN=1
+
+    RUN_EXIT="$(pref_bool advertise-exit-node)"
+    SNAT="$(pref_bool snat-subnet-routes)"
+    ACCEPT_ROUTES="$(pref_bool accept-routes)"
+    ACCEPT_DNS="$(pref_bool accept-dns)"
+
+    EXIT_NODE="$(
+        tailscale get exit-node 2>/dev/null |
+        tr -d '\r\n' || true
+    )"
+
+    # Keep the stable field layout used by the Mrouter LuCI parser
+    # remains compatible.
+    #
+    # IoT and WAN fields are intentionally blank / disabled.
+    printf 'STATUS|%s|%s|%s|%s|%s|%s|%s|%s|%s|||%s|0|0|%s|%s|%s|%s|%s|%s\n' \
+        "$ENABLED" \
+        "$SERVICE" \
+        "$CONNECTED" \
+        "$BACKEND" \
+        "$IP" \
+        "$ACCOUNT" \
+        "$TAILNET" \
+        "$HOSTNAME" \
+        "$LAN_NET" \
+        "$ADV_LAN" \
+        "$RUN_EXIT" \
+        "$SNAT" \
+        "$ACCEPT_ROUTES" \
+        "$ACCEPT_DNS" \
+        "$EXIT_NODE" \
+        "$AUTH_URL"
+}
+
+
+start_bind() {
+    enable_forwarding
+
+    /etc/init.d/tailscale enable \
+        >/dev/null 2>&1 || true
+
+    /etc/init.d/tailscale start \
+        >/dev/null 2>&1 || true
+
+    sleep 1
+
+    JSON="$(ts_json)"
+    BACKEND="$(json_one "$JSON" '@.BackendState')"
+
+    if [ "$BACKEND" = "Running" ]; then
+
+        apply_default_router_settings || return 1
+
+        rm -f "$AUTH_CACHE"
+
+        status_data
+        return 0
+    fi
+
+    # Authentication only.
+    #
+    # No nohup.
+    # No background process.
+    # No IoT route.
+    #
+    # Tailscale's JSON output emits AuthURL while BackendState is
+    # NeedsLogin. The 6-second maximum keeps the LuCI request well
+    # below a normal XHR timeout.
+    OUT="$(
+        tailscale up \
+            --json \
+            --timeout=6s \
+            --reset \
+            --hostname=Mrouter-OS \
+            --accept-dns=false \
+            2>&1 || true
+    )"
+
+    URL="$(find_auth_url "$OUT")"
+
+    status_data
+
+    if [ -n "$URL" ]; then
+        printf 'BIND|%s\n' "$URL"
+        return 0
+    fi
+
+    ERROR="$(
+        printf '%s\n' "$OUT" |
+        tail -n 4 |
+        tr '\n' ' ' |
+        sed 's/[[:space:]][[:space:]]*/ /g'
+    )"
+
+    if [ -n "$ERROR" ]; then
+        printf 'INFO|%s\n' "$ERROR"
+    else
+        echo 'INFO|Tailscale is waiting for authentication. Press Try Again.'
+    fi
+
+    return 0
+}
+
+
+finalize_after_auth() {
+    JSON="$(ts_json)"
+    BACKEND="$(json_one "$JSON" '@.BackendState')"
+    [ "$BACKEND" = "Running" ] || {
+        echo "Tailscale authentication has not completed yet."
+        return 1
+    }
+
+    if [ ! -f "$DEFAULT_MARKER" ]; then
+        apply_default_router_settings || return 1
+    fi
+
+    status_data
+}
+
+
+apply_settings() {
+    RUN_EXIT="${1:-0}"
+    SNAT="${2:-1}"
+    ACCEPT_ROUTES=0
+    CUSTOM_EXIT="${4:-0}"
+    EXIT_NODE="${5:-}"
+
+    LAN_NET="$(network_prefix lan)"
+
+    [ -n "$LAN_NET" ] || {
+        echo "Unable to determine the LAN network prefix." >&2
+        exit 1
+    }
+
+    enable_forwarding
+
+    # Always LAN only.
+    tailscale set \
+        --hostname=Mrouter-OS \
+        --accept-dns=false \
+        --accept-routes="$(bool_word "$ACCEPT_ROUTES")" \
+        "--advertise-routes=$LAN_NET" \
+        --advertise-exit-node="$(bool_word "$RUN_EXIT")" \
+        --snat-subnet-routes="$(bool_word "$SNAT")" ||
+        exit 1
+
+    if [ "$CUSTOM_EXIT" = "1" ]; then
+
+        case "$EXIT_NODE" in
+            ""|*[!A-Za-z0-9._:?-]*)
+                echo "Invalid exit-node name or Tailscale IP." >&2
+                exit 1
+                ;;
+        esac
+
+        tailscale set \
+            "--exit-node=$EXIT_NODE" \
+            --exit-node-allow-lan-access=true ||
+            exit 1
+
+    else
+
+        tailscale set --exit-node= ||
+            exit 1
+    fi
+
+    {
+        echo "lan=$LAN_NET"
+        echo "applied=$(date)"
+    } > "$DEFAULT_MARKER"
+
+    status_data
+}
+
+
+case "$ACTION" in
+
+    status)
+        status_data
+        ;;
+
+    bind)
+        start_bind
+        ;;
+
+    disable)
+        # Disconnect from the Tailnet but keep tailscaled running.
+        # This lets the Mrouter page continue reading status and
+        # allows a quick reconnect without breaking LuCI.
+        tailscale down >/dev/null 2>&1 || true
+
+        /etc/init.d/tailscale enable >/dev/null 2>&1 || true
+        /etc/init.d/tailscale start  >/dev/null 2>&1 || true
+
+        rm -f "$AUTH_CACHE"
+
+        status_data
+        ;;
+
+    finalize)
+    finalize_after_auth
+    ;;
+
+apply)
+        shift
+        apply_settings "$@"
+        ;;
+
+    *)
+        echo "Unknown action" >&2
+        exit 1
+        ;;
+
+esac

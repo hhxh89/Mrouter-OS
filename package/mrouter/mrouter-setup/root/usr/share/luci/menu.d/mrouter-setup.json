@@ -1,0 +1,8 @@
+{
+  "admin/mrouter-setup": {
+    "title": "Setup",
+    "order": 0,
+    "action": { "type": "view", "path": "mrouter/setup" },
+    "depends": { "acl": [ "mrouter-setup" ] }
+  }
+}

@@ -1,0 +1,300 @@
+#!/bin/sh
+
+
+ACTION="${1:-status}"
+
+CFG="/etc/adguardhome/adguardhome.yaml"
+
+STATE_DIR="/etc/mrouter/adguard-dns"
+BACKUP="$STATE_DIR/dnsmasq.env"
+
+mkdir -p "$STATE_DIR"
+
+
+
+lan_ip() {
+
+    uci -q get network.lan.ipaddr
+}
+
+
+
+yaml_dns_port() {
+
+    [ -r "$CFG" ] || {
+        echo ""
+        return
+    }
+
+
+    awk '
+    /^dns:/ {
+        indns=1
+        next
+    }
+
+    indns && /^[^[:space:]]/ {
+        exit
+    }
+
+    indns && /^[[:space:]]+port:/ {
+        gsub(/["'\'' ]/, "", $2)
+        print $2
+        exit
+    }
+    ' "$CFG"
+}
+
+
+
+yaml_web_port() {
+
+    [ -r "$CFG" ] || {
+        echo 3000
+        return
+    }
+
+
+    ADDRESS="$(
+        awk '
+        /^http:/ {
+            inhttp=1
+            next
+        }
+
+        inhttp && /^[^[:space:]]/ {
+            exit
+        }
+
+        inhttp && /^[[:space:]]+address:/ {
+            sub(/^[^:]*:[[:space:]]*/, "")
+            gsub(/["'\'' ]/, "")
+            print
+            exit
+        }
+        ' "$CFG"
+    )"
+
+
+    case "$ADDRESS" in
+
+        *:*)
+            echo "${ADDRESS##*:}"
+            ;;
+
+        *)
+            echo 3000
+            ;;
+    esac
+}
+
+
+
+yaml_upstream_is_dnsmasq() {
+    [ -r "$CFG" ] || return 1
+    awk '
+    /^dns:/ { indns=1; next }
+    indns && /^[^[:space:]]/ { exit }
+    indns && /^[[:space:]]+upstream_dns:/ { inup=1; next }
+    inup && /^[[:space:]]+[A-Za-z0-9_]+:/ { exit }
+    inup && /127\.0\.0\.1:5353/ { found=1; exit }
+    END { exit found ? 0 : 1 }
+    ' "$CFG"
+}
+
+set_agh_upstream_dnsmasq() {
+    [ -s "$CFG" ] || return 1
+    mkdir -p "$STATE_DIR"
+    [ -f "$STATE_DIR/adguardhome.before-mrouter.yaml" ] || cp -p "$CFG" "$STATE_DIR/adguardhome.before-mrouter.yaml"
+
+    TMP="$CFG.mrouter.$$"
+    awk '
+    BEGIN { indns=0; inup=0; found=0 }
+    /^dns:[[:space:]]*$/ { indns=1; print; next }
+    indns && /^[^[:space:]]/ { indns=0 }
+    indns && /^  upstream_dns:[[:space:]]*$/ {
+        print "  upstream_dns:"
+        print "  - 127.0.0.1:5353"
+        inup=1
+        found=1
+        next
+    }
+    inup {
+        if ($0 ~ /^  [A-Za-z0-9_]+:/) { inup=0; print; next }
+        next
+    }
+    { print }
+    END { if (!found) exit 42 }
+    ' "$CFG" > "$TMP" || { rm -f "$TMP"; return 1; }
+    chmod --reference="$CFG" "$TMP" 2>/dev/null || chmod 600 "$TMP"
+    chown --reference="$CFG" "$TMP" 2>/dev/null || true
+    mv "$TMP" "$CFG"
+}
+
+
+save_dnsmasq() {
+    [ -f "$BACKUP" ] && return
+    PORT="$(uci -q get dhcp.@dnsmasq[0].port)"
+    NORESOLV="$(uci -q get dhcp.@dnsmasq[0].noresolv)"
+    printf '%s|%s\n' "${PORT:-53}" "${NORESOLV:-0}" > "$BACKUP"
+    chmod 600 "$BACKUP"
+}
+
+restore_dnsmasq() {
+    [ -r "$BACKUP" ] || return
+    LINE="$(head -n1 "$BACKUP" 2>/dev/null)"
+    PORT="${LINE%%|*}"
+    NORESOLV="${LINE#*|}"
+    case "$PORT" in ''|*[!0-9]*) PORT=53 ;; esac
+    case "$NORESOLV" in 1) ;; *) NORESOLV=0 ;; esac
+    uci set "dhcp.@dnsmasq[0].port=$PORT"
+    if [ "$NORESOLV" = 1 ]; then uci set "dhcp.@dnsmasq[0].noresolv=1"; else uci -q delete "dhcp.@dnsmasq[0].noresolv"; fi
+    uci commit dhcp
+    /etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
+    rm -f "$BACKUP"
+}
+
+
+
+status_output() {
+
+    ENABLED=0
+    RUNNING=0
+    ROUTING=0
+    SETUP=0
+
+
+    /etc/init.d/adguardhome enabled \
+        >/dev/null 2>&1 &&
+        ENABLED=1
+
+
+    /etc/init.d/adguardhome running \
+        >/dev/null 2>&1 &&
+        RUNNING=1
+
+
+    [ -s "$CFG" ] &&
+        SETUP=1
+
+
+    DNSPORT="$(yaml_dns_port)"
+    WEBPORT="$(yaml_web_port)"
+
+    LANIP="$(lan_ip)"
+
+    [ -n "$LANIP" ] ||
+        LANIP="192.168.1.1"
+
+
+    DNSMASQ_PORT="$(
+        uci -q get dhcp.@dnsmasq[0].port
+    )"
+
+    [ -n "$DNSMASQ_PORT" ] ||
+        DNSMASQ_PORT=53
+
+
+    if [ "$RUNNING" = 1 ] &&
+       [ "$DNSPORT" = 53 ] &&
+       [ "$DNSMASQ_PORT" = 5353 ] &&
+       yaml_upstream_is_dnsmasq; then
+
+        ROUTING=1
+    fi
+
+
+    echo \
+    "STATUS|$ENABLED|$RUNNING|$SETUP|${DNSPORT:-0}|http://$LANIP:$WEBPORT/|$ROUTING"
+}
+
+
+
+case "$ACTION" in
+
+
+status)
+
+    status_output
+    ;;
+
+
+
+enable)
+
+    if [ "$(uci -q get mrouterservices.main.dns_mode)" = "pihole" ]; then
+        echo "Pi-hole DNS mode is active. Switch DNS Provider back to Mrouter before enabling AdGuard Home." >&2
+        exit 1
+    fi
+
+    DNSPORT="$(yaml_dns_port)"
+
+
+    # If configured for DNS :53, free :53 first.
+
+    if [ "$DNSPORT" = "53" ]; then
+
+        save_dnsmasq
+
+        uci set \
+            dhcp.@dnsmasq[0].port=5353
+
+        uci commit dhcp
+
+        /etc/init.d/dnsmasq restart \
+            >/dev/null 2>&1
+
+        # Keep AdGuard as the client-facing resolver while dnsmasq-full remains
+        # in the upstream path for local names, Mrouter content rules and PBR nftsets.
+        set_agh_upstream_dnsmasq || {
+            restore_dnsmasq
+            echo "Could not configure AdGuard upstream to dnsmasq-full" >&2
+            exit 1
+        }
+
+    fi
+
+
+    /etc/init.d/adguardhome enable \
+        >/dev/null 2>&1
+
+    /etc/init.d/adguardhome restart \
+        >/dev/null 2>&1
+
+
+    sleep 2
+
+
+    # If AdGuard could not come up, restore DNS immediately.
+
+    if ! /etc/init.d/adguardhome running \
+        >/dev/null 2>&1; then
+
+        restore_dnsmasq
+    fi
+
+
+    status_output
+    ;;
+
+
+
+disable)
+
+    /etc/init.d/adguardhome stop \
+        >/dev/null 2>&1
+
+    /etc/init.d/adguardhome disable \
+        >/dev/null 2>&1
+
+    restore_dnsmasq
+
+    status_output
+    ;;
+
+
+*)
+    exit 1
+    ;;
+
+esac

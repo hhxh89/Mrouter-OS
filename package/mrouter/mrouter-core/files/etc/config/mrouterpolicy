@@ -1,0 +1,2 @@
+config settings 'main'
+	option all_other 'wan'

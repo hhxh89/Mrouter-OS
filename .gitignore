@@ -1,0 +1,29 @@
+# Build outputs
+release/
+bin/
+build_dir/
+staging_dir/
+tmp/
+logs/
+dl/
+
+# Router backups / secrets
+backup-*
+*.tar.gz
+*.img
+*.img.gz
+*.key
+*.pem
+*.p12
+*.pfx
+auth.txt
+tailscaled.state
+shadow
+dropbear_*_host_key
+/etc/mrouter/ddns/secrets
+
+# Editor/OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

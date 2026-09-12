@@ -1,0 +1,7 @@
+{
+  "mrouter-setup": {
+    "description": "Mrouter-OS safe setup wizard",
+    "read": { "file": { "/usr/libexec/mrouter-setup": [ "exec" ] } },
+    "write": { "file": { "/usr/libexec/mrouter-setup": [ "exec" ] } }
+  }
+}

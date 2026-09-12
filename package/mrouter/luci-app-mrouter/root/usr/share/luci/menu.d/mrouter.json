@@ -1,0 +1,773 @@
+{
+  "admin/dashboard": {
+    "title": "Internet",
+    "order": 1,
+    "action": {
+      "type": "view",
+      "path": "mrouter/internet"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/connected": {
+    "title": "Clients",
+    "order": 2,
+    "action": {
+      "type": "view",
+      "path": "mrouter/clients"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/iot": {
+    "title": "IoT Clients",
+    "order": 3,
+    "action": {
+      "type": "view",
+      "path": "mrouter/iot-clients"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/vpn": {
+    "title": "VPN",
+    "order": 30,
+    "action": {
+      "type": "firstchild",
+      "preferred": "dashboard",
+      "recurse": true
+    }
+  },
+  "admin/vpn/dashboard": {
+    "title": "Dashboard",
+    "order": 1,
+    "action": {
+      "type": "view",
+      "path": "mrouter/vpn-dashboard"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/vpn/openvpn": {
+    "title": "OpenVPN",
+    "order": 2,
+    "action": {
+      "type": "view",
+      "path": "mrouter/openvpn"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ],
+      "fs": {
+        "/usr/sbin/openvpn": "executable"
+      }
+    }
+  },
+  "admin/vpn/wireguard": {
+    "title": "WireGuard",
+    "order": 3,
+    "action": {
+      "type": "view",
+      "path": "mrouter/wireguard"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ],
+      "fs": {
+        "/usr/bin/wg": "executable"
+      }
+    }
+  },
+  "admin/vpn/policy-routing": {
+    "title": "Policy Routing",
+    "order": 5,
+    "action": {
+      "type": "view",
+      "path": "mrouter/policy"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ],
+      "fs": {
+        "/etc/init.d/pbr": "executable"
+      }
+    }
+  },
+  "admin/services": {
+    "title": "Services",
+    "order": 40,
+    "action": {
+      "type": "firstchild",
+      "preferred": "local-services",
+      "recurse": true
+    }
+  },
+  "admin/services/adguardhome": {
+    "title": "AdGuard Home",
+    "order": 2,
+    "action": {
+      "type": "view",
+      "path": "mrouter/adguard"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/services/ddns": {
+    "title": "Dynamic DNS",
+    "order": 3,
+    "action": {
+      "type": "view",
+      "path": "mrouter/ddns"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/status": {
+    "depends": {
+      "fs": {
+        "/__MROUTER_HIDE_STATUS_ROOT__": "executable"
+      }
+    }
+  },
+  "admin/system": {
+    "depends": {
+      "fs": {
+        "/__MROUTER_HIDE_SYSTEM_ROOT__": "executable"
+      }
+    }
+  },
+  "admin/network": {
+    "depends": {
+      "fs": {
+        "/__MROUTER_HIDE_NETWORK_ROOT__": "executable"
+      }
+    }
+  },
+  "admin/statistics": {
+    "depends": {
+      "fs": {
+        "/__MROUTER_HIDE_STATISTICS_ROOT__": "executable"
+      }
+    }
+  },
+  "admin/services/pbr": {
+    "depends": {
+      "fs": {
+        "/__MROUTER_HIDE_STOCK_PBR__": "executable"
+      }
+    }
+  },
+  "admin/advanced": {
+    "title": "Advanced",
+    "order": 90,
+    "action": {
+      "type": "view",
+      "path": "mrouter/advanced"
+    },
+    "depends": {
+      "acl": [
+        "luci-mod-network-config",
+        "luci-mod-system-config"
+      ]
+    }
+  },
+  "admin/advanced/network-settings": {
+    "title": "Network Settings",
+    "order": 1,
+    "action": {
+      "type": "firstchild",
+      "preferred": "interfaces",
+      "recurse": true
+    }
+  },
+  "admin/advanced/network-settings/interfaces": {
+    "title": "Networks",
+    "order": 2,
+    "action": {
+      "type": "view",
+      "path": "mrouter/networks"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/advanced/network-settings/dhcp": {
+    "title": "DHCP & DNS",
+    "order": 3,
+    "action": {
+      "type": "view",
+      "path": "mrouter/dhcp-dns"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/advanced/network-settings/firewall": {
+    "title": "Firewall",
+    "order": 4,
+    "action": {
+      "type": "view",
+      "path": "mrouter/firewall-modern"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/advanced/network-settings/routing": {
+    "title": "Routing",
+    "order": 5,
+    "action": {
+      "type": "view",
+      "path": "mrouter/routing-modern"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/advanced/network-settings/sqm": {
+    "title": "Traffic Control",
+    "order": 6,
+    "action": {
+      "type": "view",
+      "path": "mrouter/traffic-control"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/advanced/network-settings/diagnostics": {
+    "title": "Diagnostics",
+    "order": 7,
+    "action": {
+      "type": "view",
+      "path": "mrouter/diagnostics-modern"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/advanced/administration": {
+    "title": "Administration",
+    "order": 20,
+    "action": {
+      "type": "firstchild",
+      "preferred": "system",
+      "recurse": true
+    }
+  },
+  "admin/advanced/administration/system": {
+    "title": "Device Settings",
+    "order": 1,
+    "action": {
+      "type": "view",
+      "path": "mrouter/device-settings"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/advanced/administration/password": {
+    "title": "Administrator Account",
+    "order": 2,
+    "action": {
+      "type": "view",
+      "path": "mrouter/admin-password"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/advanced/administration/ssh": {
+    "title": "SSH Access",
+    "order": 3,
+    "action": {
+      "type": "view",
+      "path": "mrouter/admin-ssh"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/advanced/administration/sshkeys": {
+    "title": "SSH Keys",
+    "order": 4,
+    "action": {
+      "type": "view",
+      "path": "mrouter/admin-sshkeys"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/advanced/administration/web": {
+    "title": "Web Access",
+    "order": 5,
+    "action": {
+      "type": "view",
+      "path": "mrouter/admin-web"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/advanced/administration/startup": {
+    "title": "Startup & Services",
+    "order": 6,
+    "action": {
+      "type": "view",
+      "path": "mrouter/admin-startup"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/advanced/administration/scheduled": {
+    "title": "Scheduled Tasks",
+    "order": 7,
+    "action": {
+      "type": "view",
+      "path": "mrouter/admin-scheduled"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/advanced/administration/backup": {
+    "title": "Backup & Firmware",
+    "order": 8,
+    "action": {
+      "type": "view",
+      "path": "mrouter/admin-backup"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/advanced/system-log": {
+    "title": "System Log",
+    "order": 30,
+    "action": {
+      "type": "view",
+      "path": "mrouter/logs-modern"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/advanced/processes": {
+    "title": "Processes",
+    "order": 31,
+    "action": {
+      "type": "view",
+      "path": "mrouter/processes-modern"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/advanced/terminal": {
+    "title": "Terminal",
+    "order": 40,
+    "action": {
+      "type": "view",
+      "path": "mrouter/terminal"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/advanced/packages": {
+    "title": "Package Manager",
+    "order": 60,
+    "action": {
+      "type": "view",
+      "path": "mrouter/packages-modern"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/reboot": {
+    "title": "Reboot",
+    "order": 998,
+    "action": {
+      "type": "view",
+      "path": "system/reboot"
+    },
+    "depends": {
+      "acl": [
+        "luci-mod-system-reboot"
+      ]
+    }
+  },
+  "admin/advanced/network-settings/ports": {
+    "title": "Port Assignment",
+    "order": 1,
+    "action": {
+      "type": "view",
+      "path": "mrouter/ports"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/advanced/system-health": {
+    "title": "System Health",
+    "order": 25,
+    "action": {
+      "type": "view",
+      "path": "mrouter/health"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/protection": {
+    "title": "Protection",
+    "order": 45,
+    "action": {
+      "type": "firstchild",
+      "preferred": "parental",
+      "recurse": true
+    }
+  },
+  "admin/protection/parental": {
+    "title": "Parental Control",
+    "order": 1,
+    "action": {
+      "type": "view",
+      "path": "mrouter/parental"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/protection/content-filter": {
+    "title": "Content Filter",
+    "order": 2,
+    "action": {
+      "type": "view",
+      "path": "mrouter/content-filter"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/vpn/tailscale": {
+    "title": "Tailscale",
+    "order": 4,
+    "action": {
+      "type": "view",
+      "path": "mrouter/tailscale"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ],
+      "fs": {
+        "/usr/sbin/tailscale": "executable"
+      }
+    }
+  },
+  "admin/services/local-services": {
+    "title": "Local Services",
+    "order": 1,
+    "action": {
+      "type": "view",
+      "path": "mrouter/local-services"
+    },
+    "depends": {
+      "acl": [
+        "mrouter-ui"
+      ]
+    }
+  },
+  "admin/advanced/expert": {
+    "title": "Expert LuCI",
+    "order": 95,
+    "action": {
+      "type": "firstchild",
+      "preferred": "interfaces",
+      "recurse": true
+    },
+    "depends": {
+      "acl": [
+        "luci-mod-network-config",
+        "luci-mod-system-config"
+      ]
+    }
+  },
+  "admin/advanced/expert/interfaces": {
+    "title": "Interfaces",
+    "order": 1,
+    "action": {
+      "type": "view",
+      "path": "network/interfaces"
+    },
+    "depends": {
+      "acl": [
+        "luci-mod-network-config"
+      ]
+    }
+  },
+  "admin/advanced/expert/dhcp": {
+    "title": "DHCP / DNS",
+    "order": 2,
+    "action": {
+      "type": "view",
+      "path": "network/dhcp"
+    },
+    "depends": {
+      "acl": [
+        "luci-mod-network-dhcp"
+      ]
+    }
+  },
+  "admin/advanced/expert/firewall": {
+    "title": "Firewall",
+    "order": 3,
+    "action": {
+      "type": "view",
+      "path": "firewall/zones"
+    },
+    "depends": {
+      "acl": [
+        "luci-app-firewall"
+      ]
+    }
+  },
+  "admin/advanced/expert/routes": {
+    "title": "Static Routes",
+    "order": 4,
+    "action": {
+      "type": "view",
+      "path": "network/routes"
+    },
+    "depends": {
+      "acl": [
+        "luci-mod-network-config"
+      ]
+    }
+  },
+  "admin/advanced/expert/sqm": {
+    "title": "SQM",
+    "order": 5,
+    "action": {
+      "type": "view",
+      "path": "network/sqm"
+    },
+    "depends": {
+      "acl": [
+        "luci-app-sqm"
+      ]
+    }
+  },
+  "admin/advanced/expert/system": {
+    "title": "System",
+    "order": 6,
+    "action": {
+      "type": "view",
+      "path": "system/system"
+    },
+    "depends": {
+      "acl": [
+        "luci-mod-system-config"
+      ]
+    }
+  },
+  "admin/advanced/expert/password": {
+    "title": "Password",
+    "order": 7,
+    "action": {
+      "type": "view",
+      "path": "system/password"
+    },
+    "depends": {
+      "acl": [
+        "luci-mod-system-config"
+      ]
+    }
+  },
+  "admin/advanced/expert/ssh": {
+    "title": "Dropbear / SSH",
+    "order": 8,
+    "action": {
+      "type": "view",
+      "path": "system/dropbear"
+    },
+    "depends": {
+      "acl": [
+        "luci-mod-system-ssh"
+      ]
+    }
+  },
+  "admin/advanced/expert/sshkeys": {
+    "title": "SSH Keys",
+    "order": 9,
+    "action": {
+      "type": "view",
+      "path": "system/sshkeys"
+    },
+    "depends": {
+      "acl": [
+        "luci-mod-system-ssh"
+      ]
+    }
+  },
+  "admin/advanced/expert/web": {
+    "title": "uHTTPd",
+    "order": 10,
+    "action": {
+      "type": "view",
+      "path": "system/uhttpd"
+    },
+    "depends": {
+      "acl": [
+        "luci-mod-system-uhttpd"
+      ]
+    }
+  },
+  "admin/advanced/expert/startup": {
+    "title": "Init Scripts",
+    "order": 11,
+    "action": {
+      "type": "view",
+      "path": "system/startup"
+    },
+    "depends": {
+      "acl": [
+        "luci-mod-system-init"
+      ]
+    }
+  },
+  "admin/advanced/expert/scheduled": {
+    "title": "Cron",
+    "order": 12,
+    "action": {
+      "type": "view",
+      "path": "system/crontab"
+    },
+    "depends": {
+      "acl": [
+        "luci-mod-system-cron"
+      ]
+    }
+  },
+  "admin/advanced/expert/backup": {
+    "title": "Backup / Firmware",
+    "order": 13,
+    "action": {
+      "type": "view",
+      "path": "system/flash"
+    },
+    "depends": {
+      "acl": [
+        "luci-mod-system-flash"
+      ]
+    }
+  },
+  "admin/advanced/expert/log": {
+    "title": "System Log",
+    "order": 14,
+    "action": {
+      "type": "view",
+      "path": "status/syslog"
+    },
+    "depends": {
+      "acl": [
+        "luci-mod-status-logs"
+      ]
+    }
+  },
+  "admin/advanced/expert/processes": {
+    "title": "Processes",
+    "order": 15,
+    "action": {
+      "type": "view",
+      "path": "status/processes"
+    },
+    "depends": {
+      "acl": [
+        "luci-mod-status-processes"
+      ]
+    }
+  },
+  "admin/advanced/expert/packages": {
+    "title": "Packages",
+    "order": 16,
+    "action": {
+      "type": "view",
+      "path": "package-manager"
+    },
+    "depends": {
+      "acl": [
+        "luci-app-package-manager"
+      ]
+    }
+  }
+}

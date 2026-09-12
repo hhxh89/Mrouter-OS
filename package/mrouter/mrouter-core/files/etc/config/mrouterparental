@@ -1,0 +1,2 @@
+config parental 'config'
+	option enabled '0'

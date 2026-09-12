@@ -1,0 +1,145 @@
+#!/bin/sh
+
+target_up() {
+    T="$1"
+
+    [ "$T" = "wan" ] && {
+        U="$(ubus call network.interface.wan status 2>/dev/null)"
+        [ "$(printf '%s' "$U" | jsonfilter -e '@.up' 2>/dev/null)" = "true" ]
+        return
+    }
+
+    case "$T" in
+        @*)
+            DEV="${T#@}"
+            [ -e "/sys/class/net/$DEV/operstate" ] || return 1
+            S="$(cat "/sys/class/net/$DEV/operstate" 2>/dev/null)"
+            [ "$S" = "up" ] || [ "$S" = "unknown" ]
+            return
+            ;;
+    esac
+
+    if [ -e "/sys/class/net/$T/operstate" ]; then
+        S="$(cat "/sys/class/net/$T/operstate" 2>/dev/null)"
+        [ "$S" = "up" ] || [ "$S" = "unknown" ]
+        return
+    fi
+
+    U="$(ubus call "network.interface.$T" status 2>/dev/null)"
+    [ "$(printf '%s' "$U" | jsonfilter -e '@.up' 2>/dev/null)" = "true" ]
+}
+
+schedule_active() {
+    MODE="$1"; DAYS="$2"; START="$3"; END="$4"
+
+    [ "$MODE" = "always" ] && return 0
+
+    DOW="$(date +%u)"
+    HM="$(date +%H%M)"
+
+    case "$MODE" in
+        weekdays) [ "$DOW" -le 5 ] || return 1 ;;
+        weekends) [ "$DOW" -ge 6 ] || return 1 ;;
+        custom)
+            case ",$DAYS," in *",$DOW,"*) ;; *) return 1 ;; esac
+            ;;
+        *) return 0 ;;
+    esac
+
+    S="$(printf '%s' "$START" | tr -d ':')"
+    E="$(printf '%s' "$END" | tr -d ':')"
+    case "$S$E" in *[!0-9]*) return 0 ;; esac
+
+    if [ "$S" -le "$E" ]; then
+        [ "$HM" -ge "$S" ] && [ "$HM" -lt "$E" ]
+    else
+        [ "$HM" -ge "$S" ] || [ "$HM" -lt "$E" ]
+    fi
+}
+
+while :; do
+    # Do not mutate or restart PBR while the user has the policy engine disabled.
+    if [ "$(uci -q get pbr.config.enabled)" != "1" ]; then
+        sleep 15
+        continue
+    fi
+
+    CHANGED=0
+
+    for SEC in $(uci show mrouterpolicy 2>/dev/null | sed -n 's/^mrouterpolicy\.\([^.=]*\)=policy$/\1/p'); do
+        [ "$(uci -q get "pbr.$SEC")" = "policy" ] || continue
+
+        DESIRED="$(uci -q get "mrouterpolicy.$SEC.desired_target")"
+        FAIL="$(uci -q get "mrouterpolicy.$SEC.fail_mode")"
+        FALLBACK="$(uci -q get "mrouterpolicy.$SEC.fallback_target")"
+        MODE="$(uci -q get "mrouterpolicy.$SEC.schedule_mode")"
+        DAYS="$(uci -q get "mrouterpolicy.$SEC.schedule_days")"
+        START="$(uci -q get "mrouterpolicy.$SEC.schedule_start")"
+        END="$(uci -q get "mrouterpolicy.$SEC.schedule_end")"
+
+        [ -n "$MODE" ] || MODE="always"
+        [ -n "$START" ] || START="00:00"
+        [ -n "$END" ] || END="23:59"
+
+        CURRENT_EN="$(uci -q get "pbr.$SEC.enabled")"
+        [ "$CURRENT_EN" = "0" ] || CURRENT_EN=1
+
+        USER_EN="$(uci -q get "mrouterpolicy.$SEC.user_enabled")"
+        [ "$USER_EN" = "0" ] || USER_EN=1
+
+        if [ "$USER_EN" = "0" ]; then
+            WANT_EN=0
+        elif schedule_active "$MODE" "$DAYS" "$START" "$END"; then
+            WANT_EN=1
+        else
+            WANT_EN=0
+        fi
+
+        if [ "$CURRENT_EN" != "$WANT_EN" ]; then
+            uci set "pbr.$SEC.enabled=$WANT_EN"
+            EX="$(uci -q get "mrouterpolicy.$SEC.exclude_section")"
+            [ -n "$EX" ] && uci set "pbr.$EX.enabled=$WANT_EN"
+            CHANGED=1
+        fi
+
+        [ "$WANT_EN" = "1" ] || continue
+
+        ACTUAL="$DESIRED"
+
+        if ! target_up "$DESIRED"; then
+            case "$FAIL" in
+                wan)
+                    ACTUAL="wan"
+                    ;;
+                other)
+                    if [ -n "$FALLBACK" ] && target_up "$FALLBACK"; then
+                        ACTUAL="$FALLBACK"
+                    else
+                        # Do not leak to the main/WAN route when both VPNs are down.
+                        # Keeping the unavailable desired interface lets PBR strict
+                        # enforcement block this policy.
+                        ACTUAL="$DESIRED"
+                        uci set pbr.config.strict_enforcement='1'
+                    fi
+                    ;;
+                *)
+                    ACTUAL="$DESIRED"
+                    ;;
+            esac
+        fi
+
+        CURRENT_IF="$(uci -q get "pbr.$SEC.interface")"
+
+        if [ "$CURRENT_IF" != "$ACTUAL" ]; then
+            uci set "pbr.$SEC.interface=$ACTUAL"
+            CHANGED=1
+        fi
+    done
+
+    if [ "$CHANGED" = "1" ]; then
+        uci commit pbr
+        /etc/init.d/pbr restart >/dev/null 2>&1 || true
+    fi
+
+    sleep 15
+done

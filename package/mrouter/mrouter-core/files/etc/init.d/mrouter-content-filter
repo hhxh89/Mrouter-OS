@@ -1,0 +1,20 @@
+#!/bin/sh /etc/rc.common
+USE_PROCD=1
+START=95
+STOP=11
+
+start_service() {
+    /usr/libexec/mrouter-content-filter apply >/dev/null 2>&1 || true
+}
+
+reload_service() {
+    /usr/libexec/mrouter-content-filter apply >/dev/null 2>&1 || true
+}
+
+service_triggers() {
+    procd_add_reload_trigger mrouterfilter dhcp https-dns-proxy firewall
+}
+
+stop_service() {
+    nft delete table inet mrouter_content >/dev/null 2>&1 || true
+}

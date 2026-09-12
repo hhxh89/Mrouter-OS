@@ -1,0 +1,377 @@
+#!/bin/sh
+
+ACTION="${1:-status}"
+CFG="mrouterddns"
+SECRET_DIR="/etc/mrouter/ddns/secrets"
+STATE_DIR="/tmp/mrouter-ddns"
+
+mkdir -p "$SECRET_DIR" "$STATE_DIR"
+chmod 700 "$SECRET_DIR" 2>/dev/null || true
+
+safe_id() {
+    printf '%s' "$1" | tr -cd 'A-Za-z0-9_'
+}
+
+valid_host() {
+    printf '%s\n' "$1" | grep -Eq '^[A-Za-z0-9._-]+$'
+}
+
+public_ipv4() {
+    if [ -s /tmp/mrouter-public-ip ]; then
+        IP="$(cat /tmp/mrouter-public-ip 2>/dev/null)"
+        printf '%s\n' "$IP" | grep -Eq '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' && {
+            echo "$IP"
+            return
+        }
+    fi
+
+    curl -4 -fsS --max-time 6 https://api.ipify.org 2>/dev/null
+}
+
+state_write() {
+    ID="$1"
+    IP="$2"
+    RESULT="$3"
+    NOW="$(date +%s)"
+    RESULT="$(printf '%s' "$RESULT" | tr '|\r\n' '   ' | cut -c1-180)"
+    # Pipe-delimited data, never shell syntax. Do not source provider output.
+    printf '%s|%s|%s\n' "$IP" "$NOW" "$RESULT" > "$STATE_DIR/$ID"
+}
+
+state_read() {
+    ID="$1"
+    if [ -r "$STATE_DIR/$ID" ]; then
+        IFS='|' read -r LAST_IP LAST_TIME LAST_RESULT < "$STATE_DIR/$ID"
+        printf '%s|%s|%s' "${LAST_IP:-}" "${LAST_TIME:-0}" "${LAST_RESULT:-Never updated}"
+    else
+        printf '||Never updated'
+    fi
+}
+
+cloudflare_zone_id() {
+    HOST="$1"
+    TOKEN="$2"
+    CAND="$HOST"
+
+    while printf '%s' "$CAND" | grep -q '\.'; do
+        J="$(
+            curl -fsS --max-time 8 \
+                -H "Authorization: Bearer $TOKEN" \
+                -H "Content-Type: application/json" \
+                "https://api.cloudflare.com/client/v4/zones?name=$CAND&status=active&per_page=1" \
+                2>/dev/null
+        )"
+
+        ZID="$(jsonfilter -s "$J" -e '@.result[0].id' 2>/dev/null)"
+
+        if [ -n "$ZID" ]; then
+            printf '%s' "$ZID"
+            return 0
+        fi
+
+        CAND="${CAND#*.}"
+    done
+
+    return 1
+}
+
+update_cloudflare() {
+    HOST="$1"
+    TOKEN="$2"
+    IP="$3"
+
+    ZID="$(cloudflare_zone_id "$HOST" "$TOKEN")" || {
+        echo "Cloudflare zone not found. Token needs Zone:Read and DNS:Edit for this zone."
+        return 1
+    }
+
+    J="$(
+        curl -fsS --max-time 8 \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://api.cloudflare.com/client/v4/zones/$ZID/dns_records?type=A&name=$HOST&per_page=1" \
+            2>/dev/null
+    )"
+
+    RID="$(jsonfilter -s "$J" -e '@.result[0].id' 2>/dev/null)"
+
+    if [ -n "$RID" ]; then
+        J="$(
+            curl -fsS --max-time 8 \
+                -X PATCH \
+                -H "Authorization: Bearer $TOKEN" \
+                -H "Content-Type: application/json" \
+                --data "{\"content\":\"$IP\"}" \
+                "https://api.cloudflare.com/client/v4/zones/$ZID/dns_records/$RID" \
+                2>/dev/null
+        )"
+    else
+        J="$(
+            curl -fsS --max-time 8 \
+                -X POST \
+                -H "Authorization: Bearer $TOKEN" \
+                -H "Content-Type: application/json" \
+                --data "{\"type\":\"A\",\"name\":\"$HOST\",\"content\":\"$IP\",\"ttl\":1,\"proxied\":false}" \
+                "https://api.cloudflare.com/client/v4/zones/$ZID/dns_records" \
+                2>/dev/null
+        )"
+    fi
+
+    OK="$(jsonfilter -s "$J" -e '@.success' 2>/dev/null)"
+
+    [ "$OK" = "true" ] || {
+        MSG="$(jsonfilter -s "$J" -e '@.errors[0].message' 2>/dev/null)"
+        echo "Cloudflare error: ${MSG:-update failed}"
+        return 1
+    }
+
+    echo "Cloudflare updated to $IP"
+}
+
+update_duckdns() {
+    HOST="$1"
+    TOKEN="$2"
+    IP="$3"
+    SUB="${HOST%.duckdns.org}"
+
+    R="$(
+        curl -fsS --max-time 8 \
+            --get \
+            --data-urlencode "domains=$SUB" \
+            --data-urlencode "token=$TOKEN" \
+            --data-urlencode "ip=$IP" \
+            https://www.duckdns.org/update \
+            2>/dev/null
+    )" || return 1
+
+    [ "$R" = "OK" ] || {
+        echo "DuckDNS returned: $R"
+        return 1
+    }
+
+    echo "DuckDNS updated to $IP"
+}
+
+update_desec() {
+    HOST="$1"
+    TOKEN="$2"
+    IP="$3"
+
+    R="$(
+        curl -4 -fsS --max-time 8 \
+            -H "Authorization: Token $TOKEN" \
+            --get \
+            --data-urlencode "hostname=$HOST" \
+            --data-urlencode "myipv4=$IP" \
+            --data-urlencode "myipv6=preserve" \
+            https://update.dedyn.io/ \
+            2>/dev/null
+    )" || return 1
+
+    case "$R" in
+        good*|nochg*)
+            echo "deSEC updated to $IP"
+            ;;
+        *)
+            echo "deSEC returned: $R"
+            return 1
+            ;;
+    esac
+}
+
+update_dynu() {
+    HOST="$1"
+    USER="$2"
+    TOKEN="$3"
+    IP="$4"
+
+    [ -n "$USER" ] || {
+        echo "Dynu username is required."
+        return 1
+    }
+
+    R="$(
+        curl -fsS --max-time 8 \
+            -u "$USER:$TOKEN" \
+            --get \
+            --data-urlencode "hostname=$HOST" \
+            --data-urlencode "myip=$IP" \
+            https://api.dynu.com/nic/update \
+            2>/dev/null
+    )" || return 1
+
+    case "$R" in
+        good*|nochg*)
+            echo "Dynu updated to $IP"
+            ;;
+        *)
+            echo "Dynu returned: $R"
+            return 1
+            ;;
+    esac
+}
+
+update_one() {
+    ID="$1"
+    FORCE="${2:-0}"
+
+    ENABLED="$(uci -q get "$CFG.$ID.enabled")"
+    [ "$ENABLED" = "1" ] || return 0
+
+    PROVIDER="$(uci -q get "$CFG.$ID.provider")"
+    HOST="$(uci -q get "$CFG.$ID.hostname")"
+    USER="$(uci -q get "$CFG.$ID.username")"
+    SECRET="$(cat "$SECRET_DIR/$ID" 2>/dev/null)"
+
+    valid_host "$HOST" || {
+        state_write "$ID" "" "Invalid hostname"
+        return 1
+    }
+
+    [ -n "$SECRET" ] || {
+        state_write "$ID" "" "Missing token/secret"
+        return 1
+    }
+
+    IP="$(public_ipv4)"
+
+    printf '%s\n' "$IP" | grep -Eq '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' || {
+        state_write "$ID" "" "Could not determine public IPv4"
+        return 1
+    }
+
+    OLD="$(state_read "$ID" | cut -d'|' -f1)"
+
+    if [ "$FORCE" != "1" ] && [ "$IP" = "$OLD" ]; then
+        return 0
+    fi
+
+    case "$PROVIDER" in
+        cloudflare)
+            RESULT="$(update_cloudflare "$HOST" "$SECRET" "$IP" 2>&1)"
+            RC=$?
+            ;;
+        duckdns)
+            RESULT="$(update_duckdns "$HOST" "$SECRET" "$IP" 2>&1)"
+            RC=$?
+            ;;
+        desec)
+            RESULT="$(update_desec "$HOST" "$SECRET" "$IP" 2>&1)"
+            RC=$?
+            ;;
+        dynu)
+            RESULT="$(update_dynu "$HOST" "$USER" "$SECRET" "$IP" 2>&1)"
+            RC=$?
+            ;;
+        *)
+            RESULT="Unknown provider"
+            RC=1
+            ;;
+    esac
+
+    state_write "$ID" "$IP" "$RESULT"
+    return "$RC"
+}
+
+status_all() {
+    IP="$(public_ipv4)"
+    printf 'PUBLIC|%s\n' "$IP"
+
+    for ID in $(uci show "$CFG" 2>/dev/null | sed -n "s/^$CFG\.\([^.=]*\)=service$/\1/p"); do
+        ENABLED="$(uci -q get "$CFG.$ID.enabled")"
+        PROVIDER="$(uci -q get "$CFG.$ID.provider")"
+        HOST="$(uci -q get "$CFG.$ID.hostname")"
+        USER="$(uci -q get "$CFG.$ID.username")"
+        STATE="$(state_read "$ID")"
+
+        printf 'SERVICE|%s|%s|%s|%s|%s|%s\n' \
+            "$ID" \
+            "${ENABLED:-0}" \
+            "$PROVIDER" \
+            "$HOST" \
+            "$USER" \
+            "$STATE"
+    done
+}
+
+case "$ACTION" in
+status)
+    status_all
+    ;;
+
+add)
+    PROVIDER="$2"
+    HOST="$3"
+    USER="${4:-}"
+    SECRET="${5:-}"
+
+    case "$PROVIDER" in
+        cloudflare|duckdns|desec|dynu) ;;
+        *) echo "Unsupported provider"; exit 1 ;;
+    esac
+
+    valid_host "$HOST" || {
+        echo "Invalid hostname"
+        exit 1
+    }
+
+    [ -n "$SECRET" ] || {
+        echo "Token/secret is required"
+        exit 1
+    }
+
+    ID="svc_$(date +%s)_$$"
+    ID="$(safe_id "$ID")"
+
+    uci set "$CFG.$ID=service"
+    uci set "$CFG.$ID.enabled=1"
+    uci set "$CFG.$ID.provider=$PROVIDER"
+    uci set "$CFG.$ID.hostname=$HOST"
+    uci set "$CFG.$ID.username=$USER"
+    uci commit "$CFG"
+
+    umask 077
+    printf '%s' "$SECRET" > "$SECRET_DIR/$ID"
+
+    update_one "$ID" 1 || true
+    status_all
+    ;;
+
+toggle)
+    ID="$(safe_id "$2")"
+    VALUE="$3"
+    [ "$(uci -q get "$CFG.$ID")" = "service" ] || exit 1
+    [ "$VALUE" = "1" ] || VALUE=0
+    uci set "$CFG.$ID.enabled=$VALUE"
+    uci commit "$CFG"
+    [ "$VALUE" = "1" ] && update_one "$ID" 1 || true
+    status_all
+    ;;
+
+force)
+    ID="$(safe_id "$2")"
+    [ "$(uci -q get "$CFG.$ID")" = "service" ] || exit 1
+    update_one "$ID" 1 || true
+    status_all
+    ;;
+
+delete)
+    ID="$(safe_id "$2")"
+    [ "$(uci -q get "$CFG.$ID")" = "service" ] || exit 1
+    uci delete "$CFG.$ID"
+    uci commit "$CFG"
+    rm -f "$SECRET_DIR/$ID" "$STATE_DIR/$ID"
+    status_all
+    ;;
+
+run)
+    for ID in $(uci show "$CFG" 2>/dev/null | sed -n "s/^$CFG\.\([^.=]*\)=service$/\1/p"); do
+        update_one "$ID" 0 || true
+    done
+    ;;
+
+*)
+    echo "Unknown action"
+    exit 1
+    ;;
+esac

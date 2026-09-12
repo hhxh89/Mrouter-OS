@@ -1,0 +1,9 @@
+</div>
+{% if (!ctx.authsession): %}
+<footer class="mobile-hide mrouter-login-footer">Mrouter-OS &bull; Powered by {{ version.distname }} {{ version.distversion }}</footer>
+{% endif %}
+</div>
+</div>
+<script>L.require('menu-material')</script>
+</body>
+</html>
