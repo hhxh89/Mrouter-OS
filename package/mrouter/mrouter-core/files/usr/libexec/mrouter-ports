@@ -1,5 +1,8 @@
 #!/bin/sh
-set -u
+# Do not enable global nounset here. OpenWrt's /lib/functions/network.sh uses
+# optional shell variables internally and BusyBox ash exits with status 2 when
+# those are referenced under `set -u`. Validate write-action arguments
+# explicitly instead.
 ACTION="${1:-status}"
 . /lib/functions/network.sh 2>/dev/null || true
 
@@ -111,7 +114,13 @@ swap)
     echo 'Port roles saved in reverse. Reboot Mrouter-OS to apply the new physical-port assignment.'
     status
     ;;
-set) save_roles "$2" "$3" || exit 1; echo 'Port roles saved. Reboot Mrouter-OS to apply them.'; status ;;
+set)
+    W="${2:-}"; L="${3:-}"
+    [ -n "$W" ] && [ -n "$L" ] || { echo 'WAN and LAN device arguments are required'; exit 2; }
+    save_roles "$W" "$L" || exit 1
+    echo 'Port roles saved. Reboot Mrouter-OS to apply them.'
+    status
+    ;;
 clear-pending) uci set mrouter.ports.pending_reboot='0'; uci commit mrouter; status ;;
 *) exit 1 ;;
 esac
