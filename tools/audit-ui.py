@@ -62,14 +62,47 @@ for pid,p in pages.items():
 
 registered={}; helper_actions={}
 def action_dispatch(text):
- # Parse only the command-dispatch case "$ACTION" in ... esac. Accept indented,
- # multiline and compact BusyBox-style case bodies. Each command arm may appear
- # at the beginning of a line or immediately after ';;'.
- m=re.search(r'(?ms)^\s*case\s+"?\$ACTION"?\s+in\s*(?P<body>.*?^\s*esac\s*$)',text)
- if not m: return None
- body=m.group('body'); out=set()
- for x in re.finditer(r'(?m)(?:^|;;)\s*([A-Za-z0-9_.:-]+(?:\|[A-Za-z0-9_.:-]+)*)\)\s*',body):
-  out.update(a for a in x.group(1).split('|') if a and a!='*' and not a.startswith('$'))
+ # Parse top-level command dispatch only. The previous regexp stopped at the
+ # first nested 'esac' inside an action body, which made helpers such as DDNS
+ # appear to support provider names instead of later actions like toggle/force/delete.
+ lines=text.splitlines()
+ start=None
+ depth=0
+ body=[]
+ case_re=re.compile(r'^\s*case\s+"?\$ACTION"?\s+in\s*$')
+ for i,line in enumerate(lines):
+  if start is None:
+   if case_re.match(line):
+    start=i
+    depth=1
+   continue
+  # Count nested case/esac pairs inside the ACTION dispatcher.
+  if re.match(r'^\s*case\b.*\bin\s*$',line):
+   depth += 1
+   body.append(line)
+   continue
+  if re.match(r'^\s*esac\s*$',line):
+   depth -= 1
+   if depth == 0:
+    break
+   body.append(line)
+   continue
+  body.append(line)
+ if start is None:
+  return None
+ out=set(); nested=0
+ for line in body:
+  if re.match(r'^\s*case\b.*\bin\s*$',line):
+   nested += 1
+   continue
+  if re.match(r'^\s*esac\s*$',line):
+   nested=max(0,nested-1)
+   continue
+  if nested:
+   continue
+  m=re.match(r'^\s*([A-Za-z0-9_.:-]+(?:\|[A-Za-z0-9_.:-]+)*)\)\s*$',line)
+  if m:
+   out.update(a for a in m.group(1).split('|') if a and a!='*' and not a.startswith('$'))
  return out
 for sid,s in services.items():
  h=s.get('helper','')
