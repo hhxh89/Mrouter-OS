@@ -28,14 +28,17 @@ for ov in sorted(SRC.glob('pages-*.yaml')):
   if pid not in PAGES.get('pages',{}): raise SystemExit(f'{ov}: unknown page id {pid}')
   PAGES['pages'][pid]=deep_merge(PAGES['pages'][pid],patch)
 ACTIONS=load_yaml(SRC/'actions.yaml'); SCHEMA=load_yaml(SRC/'schema.yaml'); ACL=json.loads((APP/'root/usr/share/rpcd/acl.d/mrouter.json').read_text()); BRIDGE=(CORE/'mrouter-ui-action').read_text(errors='ignore')
+NAV=load_yaml(SRC/'navigation.yaml')
 errors=[]; pages=PAGES.get('pages',{}); services=ACTIONS.get('services',{}); allowed_blocks=set(SCHEMA.get('schema',{}).get('block_types',[])); allowed_fields=set(SCHEMA.get('schema',{}).get('field_types',[]))
 raw_runtime=(APP/'htdocs/luci-static/mrouter-ui/schema-runtime.js').read_text()
 if re.search(r'\btype:\s*legacy\b',raw_pages): errors.append('page YAML still contains a legacy block')
 if 'loadLegacy' in raw_runtime or 'view.mrouter.' in raw_runtime: errors.append('schema runtime still contains legacy view loading')
 if 'legacy' in allowed_blocks: errors.append('schema still permits legacy blocks')
 
-yaml_pairs=set()
+yaml_pairs=set(); control_count=0; link_count=0
+DESTRUCTIVE={'delete','remove','revoke','group-delete','route-delete','key-delete','pkg-remove','stop','swap'}
 def walk(obj,pid,ctx='block'):
+ global control_count,link_count
  if isinstance(obj,dict):
   typ=obj.get('type')
   if typ:
@@ -43,9 +46,18 @@ def walk(obj,pid,ctx='block'):
     if typ not in allowed_fields: errors.append(f'{pid}: unsupported field type {typ}')
    elif ctx=='block' and typ not in allowed_blocks:
     errors.append(f'{pid}: unsupported block type {typ}')
-  svc=obj.get('service')
+  svc=obj.get('service'); act=obj.get('action')
   if svc and svc not in services: errors.append(f'{pid}: unregistered service {svc}')
-  if svc and isinstance(obj.get('action'),str) and not obj['action'].startswith('$field.'): yaml_pairs.add((svc,obj['action']))
+  if svc and isinstance(act,str) and not act.startswith('$field.'):
+   yaml_pairs.add((svc,act)); control_count+=1
+   if act in DESTRUCTIVE and not obj.get('confirm'):
+    errors.append(f'{pid}: destructive control {svc}:{act} is missing confirmation')
+  if typ=='link':
+   link_count+=1
+   href=obj.get('href')
+   if not href and not obj.get('href_from'): errors.append(f'{pid}: link has no href or href_from')
+   if href and not (href.startswith('/cgi-bin/luci/') or href.startswith('terminal://')):
+    errors.append(f'{pid}: unsafe fixed link target {href}')
   for k,v in obj.items():
    if k=='fields' and isinstance(v,list):
     for item in v: walk(item,pid,'field')
@@ -60,49 +72,40 @@ for pid,p in pages.items():
  if not p.get('layout'): errors.append(f'{pid}: empty layout')
  walk(p,pid,'block')
 
+# Every static Mrouter navigation link must resolve to a native page route or an
+# explicitly allowed Expert/system endpoint. This catches 404 buttons/menus.
+native_hrefs={'/cgi-bin/luci/'+p.get('route','') for p in pages.values() if p.get('route')}
+allowed_system={'/cgi-bin/luci/admin/reboot','/cgi-bin/luci/admin/logout','/cgi-bin/luci/admin/advanced/expert/interfaces'}
+def navwalk(items):
+ for item in items or []:
+  href=item.get('href') if isinstance(item,dict) else None
+  if href and href not in native_hrefs and href not in allowed_system:
+   errors.append(f'navigation: unresolved target {href}')
+  if isinstance(item,dict): navwalk(item.get('children'))
+navwalk(NAV.get('navigation'))
+
 registered={}; helper_actions={}
 def action_dispatch(text):
- # Parse top-level command dispatch only. We track nested case/esac blocks so
- # provider/value cases inside an action do not get mistaken for commands.
- # Command arms may be multiline ("swap)" on its own line) or compact
- # BusyBox-style ("status) status ;;"), both of which are common in helpers.
- lines=text.splitlines()
- start=None
- depth=0
- body=[]
+ lines=text.splitlines(); start=None; depth=0; body=[]
  case_re=re.compile(r'^\s*case\s+"?\$ACTION"?\s+in\s*$')
  for i,line in enumerate(lines):
   if start is None:
-   if case_re.match(line):
-    start=i
-    depth=1
+   if case_re.match(line): start=i; depth=1
    continue
-  if re.match(r'^\s*case\b.*\bin\s*$',line):
-   depth += 1
-   body.append(line)
-   continue
+  if re.match(r'^\s*case\b.*\bin\s*$',line): depth+=1; body.append(line); continue
   if re.match(r'^\s*esac\s*$',line):
-   depth -= 1
-   if depth == 0:
-    break
-   body.append(line)
-   continue
+   depth-=1
+   if depth==0: break
+   body.append(line); continue
   body.append(line)
- if start is None:
-  return None
+ if start is None: return None
  out=set(); nested=0
  for line in body:
-  if re.match(r'^\s*case\b.*\bin\s*$',line):
-   nested += 1
-   continue
-  if re.match(r'^\s*esac\s*$',line):
-   nested=max(0,nested-1)
-   continue
-  if nested:
-   continue
+  if re.match(r'^\s*case\b.*\bin\s*$',line): nested+=1; continue
+  if re.match(r'^\s*esac\s*$',line): nested=max(0,nested-1); continue
+  if nested: continue
   m=re.match(r'^\s*([A-Za-z0-9_.:-]+(?:\|[A-Za-z0-9_.:-]+)*)\)\s*',line)
-  if m:
-   out.update(a for a in m.group(1).split('|') if a and a!='*' and not a.startswith('$'))
+  if m: out.update(a for a in m.group(1).split('|') if a and a!='*' and not a.startswith('$'))
  return out
 for sid,s in services.items():
  h=s.get('helper','')
@@ -136,4 +139,4 @@ if errors:
  print('Mrouter native YAML UI audit FAILED:')
  for e in errors: print(' - '+e)
  sys.exit(1)
-print(f'Mrouter native YAML UI audit OK: {len(pages)} pages, {len(registered)} registered services, {len(yaml_pairs)} literal actions, {len(list(SRC.glob("pages-*.yaml")))} modular overlays, 0 legacy blocks')
+print(f'Mrouter native YAML UI audit OK: {len(pages)} pages, {len(registered)} registered services, {len(yaml_pairs)} literal actions, {control_count} controls, {link_count} links, {len(list(SRC.glob("pages-*.yaml")))} modular overlays, 0 legacy blocks')
