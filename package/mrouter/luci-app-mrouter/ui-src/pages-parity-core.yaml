@@ -92,6 +92,28 @@ pages:
   terminal:
     title: Terminal
     subtitle: Secure local browser terminal
+    sources:
+      terminal: { service: terminal, action: status, parser: pipe, fields: [running, enabled, port, ssl] }
     layout:
-    - { type: card, title: Browser Terminal, text: The terminal runs as a separate HTTPS service on the router and is intended for advanced local administration. }
-    - { type: link, title: Open Terminal, text: Open the packaged ttyd terminal in a new tab., label: Open Terminal, href: 'terminal://7681', external: true }
+    - type: stats
+      items:
+      - { label: Running, value_from: terminal.running }
+      - { label: Enabled at boot, value_from: terminal.enabled }
+      - { label: HTTPS port, value_from: terminal.port }
+    - type: actions
+      visible_if: { source: terminal, path: running, equals: '0' }
+      items:
+      - { label: Start Terminal, service: terminal, action: start, style: primary, reload: true }
+    - type: link
+      visible_if: { source: terminal, path: running, equals: '1' }
+      title: Open Terminal
+      text: Open the packaged ttyd terminal in a new tab. Your browser may ask you to accept the router local certificate on first use.
+      label: Open Terminal
+      href: 'terminal://7681'
+      external: true
+    - type: actions
+      visible_if: { source: terminal, path: running, equals: '1' }
+      title: Terminal Service
+      items:
+      - { label: Restart Terminal, service: terminal, action: restart, style: secondary, reload: true }
+      - { label: Stop Terminal, service: terminal, action: stop, style: danger, confirm: 'Stop the local browser terminal service?', reload: true }
