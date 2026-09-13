@@ -1,0 +1,97 @@
+version: 1
+pages:
+  clients:
+    title: Clients
+    subtitle: Connected LAN devices, traffic, reservations and access controls
+    sources:
+      clients: { service: client-data, action: snapshot, parser: pipe }
+      metadata: { service: clients, action: status, parser: pipe, fields: [quarantine_new] }
+    layout:
+    - { type: client-list, title: LAN Clients, source: clients, scope: lan, empty: No LAN clients detected. }
+    - type: form
+      title: New-device protection
+      text: When enabled, newly discovered devices can be held for review before normal access is allowed.
+      fields:
+      - { id: enabled, type: toggle, label: Quarantine newly discovered clients, default_from: metadata.quarantine_new }
+      actions:
+      - { label: Save Protection, service: clients, action: quarantine, args: [$field.enabled], style: primary, reload: true }
+    - type: form
+      title: Friendly Name / Group
+      text: Device editing will move into the client row editor; this form remains available while the shared device picker is being completed.
+      fields:
+      - { id: mac, type: text, label: MAC address, placeholder: 'AA:BB:CC:DD:EE:FF' }
+      - { id: name, type: text, label: Friendly name }
+      - { id: group, type: text, label: Group }
+      actions:
+      - { label: Save Name / Group, service: clients, action: alias, args: [$field.mac, $field.name, $field.group], style: primary, reload: true }
+
+  iot-clients:
+    title: IoT Clients
+    subtitle: Devices on the isolated Mrouter IoT network
+    sources:
+      iot: { service: iot-info, action: status, parser: pipe, fields: [configured, ip, netmask, device, vlan, subnet] }
+      clients: { service: client-data, action: snapshot-iot, parser: pipe }
+    layout:
+    - type: notice
+      visible_if: { source: iot, path: configured, equals: '0' }
+      text: No IoT network is configured. Create an IoT network from Networks before adding isolated devices.
+    - type: stats
+      visible_if: { source: iot, path: configured, equals: '1' }
+      items:
+      - { label: Router address, value_from: iot.ip }
+      - { label: Interface, value_from: iot.device }
+      - { label: Subnet, value_from: iot.subnet }
+      - { label: VLAN, value_from: iot.vlan }
+    - type: client-list
+      title: IoT Devices
+      source: clients
+      scope: iot
+      empty: No IoT clients detected.
+      visible_if: { source: iot, path: configured, equals: '1' }
+
+  wireless:
+    title: Wireless
+    subtitle: Wi-Fi radios and networks detected on this router
+    sources:
+      wireless: { service: wireless, action: status, parser: pipe }
+    layout:
+    - { type: wireless-panel, title: Wi-Fi Hardware & Networks, source: wireless }
+    - type: notice
+      visible_if: { source: wireless, tag: RADIO, exists: false }
+      text: No supported wireless hardware is detected. Wi-Fi configuration controls are hidden until a real radio is available.
+    - type: form
+      title: Add Wi-Fi Network
+      visible_if: { source: wireless, tag: RADIO, exists: true }
+      fields:
+      - id: radio
+        type: select
+        label: Radio
+        options_from: { source: wireless, tags: [RADIO], value_index: 0, label_index: 0 }
+      - { id: network, type: text, label: Network, default: lan }
+      - { id: ssid, type: text, label: SSID }
+      - { id: encryption, type: select, label: Encryption, options: [{value: sae-mixed, label: WPA2/WPA3}, {value: sae, label: WPA3}, {value: psk2, label: WPA2}, {value: none, label: Open}] }
+      - { id: password, type: password, label: Password }
+      actions:
+      - { label: Add Wi-Fi Network, service: wireless, action: add-ssid, args: [$field.radio, $field.network, $field.ssid, $field.encryption, $field.password], style: primary, reload: true }
+    - type: form
+      title: Radio Settings
+      visible_if: { source: wireless, tag: RADIO, exists: true }
+      fields:
+      - id: radio
+        type: select
+        label: Radio
+        options_from: { source: wireless, tags: [RADIO], value_index: 0, label_index: 0 }
+      - { id: enabled, type: toggle, label: Enabled, default: true }
+      - { id: channel, type: text, label: Channel, default: auto }
+      - { id: mode, type: text, label: Mode / width }
+      - { id: country, type: text, label: Country }
+      - { id: txpower, type: number, label: TX power }
+      actions:
+      - { label: Apply Radio Settings, service: wireless, action: radio-save, args: [$field.radio, $field.enabled, $field.channel, $field.mode, $field.country, $field.txpower], style: primary, reload: true }
+
+  terminal:
+    title: Terminal
+    subtitle: Secure local browser terminal
+    layout:
+    - { type: card, title: Browser Terminal, text: The terminal runs as a separate HTTPS service on the router and is intended for advanced local administration. }
+    - { type: link, title: Open Terminal, text: Open the packaged ttyd terminal in a new tab., label: Open Terminal, href: 'terminal://7681', external: true }
