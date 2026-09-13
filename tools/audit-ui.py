@@ -62,11 +62,13 @@ for pid,p in pages.items():
 
 registered={}; helper_actions={}
 def action_dispatch(text):
- m=re.search(r'case\s+"\$ACTION"\s+in(?P<body>.*?)(?:\nesac|\n\s*esac)',text,re.S)
+ # Parse only the command-dispatch case "$ACTION" in ... esac. Accept indented,
+ # multiline and compact BusyBox-style case bodies. Each command arm may appear
+ # at the beginning of a line or immediately after ';;'.
+ m=re.search(r'(?ms)^\s*case\s+"?\$ACTION"?\s+in\s*(?P<body>.*?^\s*esac\s*$)',text)
  if not m: return None
  body=m.group('body'); out=set()
- # Support normal multiline dispatchers and compact BusyBox-style one-line cases.
- for x in re.finditer(r'(?:^|;;)\s*([A-Za-z0-9_.:-]+(?:\|[A-Za-z0-9_.:-]+)*)\)\s*',body,re.M):
+ for x in re.finditer(r'(?m)(?:^|;;)\s*([A-Za-z0-9_.:-]+(?:\|[A-Za-z0-9_.:-]+)*)\)\s*',body):
   out.update(a for a in x.group(1).split('|') if a and a!='*' and not a.startswith('$'))
  return out
 for sid,s in services.items():
