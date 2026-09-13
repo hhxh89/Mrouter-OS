@@ -42,6 +42,7 @@ case "$SERVICE" in
   status-health) H=/usr/libexec/mrouter-status-health ;;
   services) H=/usr/libexec/mrouter-services ;;
   terminal) H=/usr/libexec/mrouter-terminal ;;
+  account) H=/usr/libexec/mrouter-account ;;
   advanced) H=/usr/libexec/mrouter-advanced ;;
   ui-config) H=/usr/libexec/mrouter-ui-config ;;
   upload) H=/usr/libexec/mrouter-upload ;;
@@ -68,7 +69,7 @@ case "$SERVICE:$ACTION" in
   parental:status|parental:apply|parental:enable|parental:save|parental:pause|parental:delete|status-parental:status|\
   content-filter:status|content-filter:apply|content-filter:enable|content-filter:save|status-content-filter:status|\
   status-health:status|services:status|services:add|services:delete|services:test|services:dns-pihole|services:dns-mrouter|\
-  terminal:status|terminal:start|terminal:stop|terminal:restart|\
+  terminal:status|terminal:start|terminal:stop|terminal:restart|account:status|account:set|\
   advanced:snapshot|advanced:sqm-save|advanced:system-save|advanced:ssh-save|advanced:service-action|advanced:diagnostics|advanced:logs|advanced:processes|advanced:packages|advanced:keys|\
   advanced:password-set|advanced:key-add|advanced:key-delete|advanced:web-save|advanced:route-add|advanced:route-delete|advanced:pkg-refresh|advanced:pkg-install|advanced:pkg-remove|advanced:pkg-upgrade|advanced:backup-create|\
   ui-config:status|ui-config:set|ui-config:export|ui-config:apply|ui-config:save|ui-config:validate|ui-config:reset|\
