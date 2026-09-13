@@ -49,7 +49,7 @@ pages:
       items:
       - { label: Create Configuration Backup, service: advanced, action: backup-create, style: primary, output: true }
     - type: notice
-      text: The helper returns the protected local backup path. Authenticated download and restore will use the native file-transfer endpoint; firmware upgrades remain separate from normal Mrouter package updates.
+      text: The helper returns the protected local backup path. Authenticated download and restore are being rebuilt as native Mrouter file actions; firmware upgrades remain separate from normal package updates.
   logs:
     sources:
       logs: { service: advanced, action: logs, parser: lines }
@@ -86,24 +86,57 @@ pages:
       - { label: Remove, service: advanced, action: pkg-remove, args: [$field.package], style: danger, confirm: 'Remove this package?', output: true, reload: true }
     - { type: code, title: Installed Packages, source: packages }
   ui-designer:
+    title: Mrouter UI Designer
+    subtitle: Edit appearance, navigation, pages and login YAML with validation and safe rollback
     sources:
       appearance:
         service: ui-config
         action: status
         parser: pipe
         fields: [accent, density, sidebar_width, content_max_width, form_max_width, card_radius, compact_forms]
+      pages_doc: { service: ui-config, action: export, args: [pages], parser: raw }
+      navigation_doc: { service: ui-config, action: export, args: [navigation], parser: raw }
+      login_doc: { service: ui-config, action: export, args: [login], parser: raw }
     layout:
+    - type: notice
+      text: Mrouter validates YAML in the browser and validates the compiled JSON again on the router. Arbitrary JavaScript, shell commands, raw HTML and legacy LuCI components are rejected.
     - type: form
       title: Appearance
       fields:
-      - { id: accent, type: colour, label: Accent, default_from: appearance.accent }
-      - { id: density, type: select, label: Density, options: [compact, comfortable], default_from: appearance.density }
-      - { id: sidebar, type: number, label: Sidebar width, default_from: appearance.sidebar_width }
-      - { id: content, type: number, label: Content max width, default_from: appearance.content_max_width }
-      - { id: form, type: number, label: Form max width, default_from: appearance.form_max_width }
-      - { id: radius, type: number, label: Card radius, default_from: appearance.card_radius }
+      - { id: accent, type: colour, label: Accent colour, default_from: appearance.accent }
+      - { id: density, type: select, label: Interface density, options: [compact, comfortable], default_from: appearance.density }
+      - { id: sidebar, type: number, label: Sidebar width (px), min: 180, max: 320, default_from: appearance.sidebar_width }
+      - { id: content, type: number, label: Content max width (px), min: 900, max: 2200, default_from: appearance.content_max_width }
+      - { id: form, type: number, label: Form max width (px), min: 220, max: 640, default_from: appearance.form_max_width }
+      - { id: radius, type: number, label: Card radius (px), min: 0, max: 28, default_from: appearance.card_radius }
       - { id: compact, type: toggle, label: Compact forms, default_from: appearance.compact_forms }
       actions:
       - { label: Save Appearance, service: ui-config, action: set, args: [$field.accent, $field.density, $field.sidebar, $field.content, $field.form, $field.radius, $field.compact], style: primary, reload: true }
-    - type: notice
-      text: Navigation, page and login YAML remain validated through the safe UI configuration backend. Arbitrary JavaScript, shell commands and legacy LuCI components are forbidden.
+      - { label: Reset Appearance, service: ui-config, action: reset, style: secondary, confirm: 'Restore default appearance?', reload: true }
+    - type: form
+      title: Pages YAML
+      text: Edit page titles, subtitles, sources, layout blocks, forms and registered actions. A last-known-good copy is retained before each apply.
+      fields:
+      - { id: document, type: yaml, label: pages.yaml, rows: 30, default_from: pages_doc.raw }
+      actions:
+      - { label: Validate Pages YAML, service: ui-config, action: validate, yaml_doc: pages, yaml_field: document, style: secondary, output: true, success: Pages YAML is valid. }
+      - { label: Apply Pages YAML, service: ui-config, action: save, yaml_doc: pages, yaml_field: document, style: primary, confirm: 'Apply this Pages YAML override?', reload: true }
+      - { label: Reset Pages YAML, service: ui-config, action: reset, args: [pages], style: danger, confirm: 'Remove the Pages YAML override and return to packaged defaults?', reload: true }
+    - type: form
+      title: Navigation YAML
+      text: Edit Mrouter navigation labels, order and safe links. Normal Mrouter navigation remains separate from Expert LuCI.
+      fields:
+      - { id: document, type: yaml, label: navigation.yaml, rows: 24, default_from: navigation_doc.raw }
+      actions:
+      - { label: Validate Navigation YAML, service: ui-config, action: validate, yaml_doc: navigation, yaml_field: document, style: secondary, output: true, success: Navigation YAML is valid. }
+      - { label: Apply Navigation YAML, service: ui-config, action: save, yaml_doc: navigation, yaml_field: document, style: primary, confirm: 'Apply this Navigation YAML override?', reload: true }
+      - { label: Reset Navigation YAML, service: ui-config, action: reset, args: [navigation], style: danger, confirm: 'Remove the Navigation YAML override?', reload: true }
+    - type: form
+      title: Login YAML
+      text: Edit the declarative Mrouter login presentation without changing authentication itself.
+      fields:
+      - { id: document, type: yaml, label: login.yaml, rows: 20, default_from: login_doc.raw }
+      actions:
+      - { label: Validate Login YAML, service: ui-config, action: validate, yaml_doc: login, yaml_field: document, style: secondary, output: true, success: Login YAML is valid. }
+      - { label: Apply Login YAML, service: ui-config, action: save, yaml_doc: login, yaml_field: document, style: primary, confirm: 'Apply this Login YAML override?', reload: true }
+      - { label: Reset Login YAML, service: ui-config, action: reset, args: [login], style: danger, confirm: 'Remove the Login YAML override?', reload: true }
