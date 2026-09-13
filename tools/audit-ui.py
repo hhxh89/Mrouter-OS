@@ -6,16 +6,9 @@ try:
 except Exception:
  sys.stderr.write('PyYAML is required. Install with: sudo apt install python3-yaml\n'); raise
 ROOT=Path(__file__).resolve().parents[1]
-APP=ROOT/'package/mrouter/luci-app-mrouter'
-CORE=ROOT/'package/mrouter/mrouter-core/files/usr/libexec'
-PAGES=yaml.safe_load((APP/'ui-src/pages.yaml').read_text())
-ACTIONS=yaml.safe_load((APP/'ui-src/actions.yaml').read_text())
-SCHEMA=yaml.safe_load((APP/'ui-src/schema.yaml').read_text())
-ACL=json.loads((APP/'root/usr/share/rpcd/acl.d/mrouter.json').read_text())
-BRIDGE=(CORE/'mrouter-ui-action').read_text(errors='ignore')
-errors=[]
-pages=PAGES.get('pages',{}); services=ACTIONS.get('services',{}); allowed_blocks=set(SCHEMA.get('schema',{}).get('block_types',[]))
-
+APP=ROOT/'package/mrouter/luci-app-mrouter'; CORE=ROOT/'package/mrouter/mrouter-core/files/usr/libexec'
+PAGES=yaml.safe_load((APP/'ui-src/pages.yaml').read_text()); ACTIONS=yaml.safe_load((APP/'ui-src/actions.yaml').read_text()); SCHEMA=yaml.safe_load((APP/'ui-src/schema.yaml').read_text()); ACL=json.loads((APP/'root/usr/share/rpcd/acl.d/mrouter.json').read_text()); BRIDGE=(CORE/'mrouter-ui-action').read_text(errors='ignore')
+errors=[]; pages=PAGES.get('pages',{}); services=ACTIONS.get('services',{}); allowed_blocks=set(SCHEMA.get('schema',{}).get('block_types',[]))
 raw_pages=(APP/'ui-src/pages.yaml').read_text(); raw_runtime=(APP/'htdocs/luci-static/mrouter-ui/schema-runtime.js').read_text()
 if re.search(r'\btype:\s*legacy\b',raw_pages): errors.append('pages.yaml still contains a legacy block')
 if 'loadLegacy' in raw_runtime or 'view.mrouter.' in raw_runtime: errors.append('schema runtime still contains legacy view loading')
@@ -27,8 +20,7 @@ def walk(obj,pid):
   if obj.get('type') and obj.get('type') not in allowed_blocks: errors.append(f'{pid}: unsupported block type {obj.get("type")}')
   svc=obj.get('service')
   if svc and svc not in services: errors.append(f'{pid}: unregistered service {svc}')
-  if svc and isinstance(obj.get('action'),str) and not obj['action'].startswith('$field.'):
-   yaml_pairs.add((svc,obj['action']))
+  if svc and isinstance(obj.get('action'),str) and not obj['action'].startswith('$field.'): yaml_pairs.add((svc,obj['action']))
   for v in obj.values(): walk(v,pid)
  elif isinstance(obj,list):
   for v in obj: walk(v,pid)
@@ -41,8 +33,7 @@ registered={}; helper_actions={}
 def case_actions(text):
  out=set()
  for m in re.finditer(r'^\s*([A-Za-z0-9_.:-]+(?:\|[A-Za-z0-9_.:-]+)*)\)\s*',text,re.M):
-  for a in m.group(1).split('|'):
-   if a and a!='*' and not a.startswith('$'): out.add(a)
+  out.update(a for a in m.group(1).split('|') if a and a!='*' and not a.startswith('$'))
  return out
 for sid,s in services.items():
  h=s.get('helper','')
@@ -51,27 +42,23 @@ for sid,s in services.items():
  if not hf.exists(): errors.append(f'{sid}: helper not packaged: {h}'); continue
  helper_actions[sid]=case_actions(hf.read_text(errors='ignore'))
 
+ALIASES={('tailscale','up'):('tailscale','bind'),('tailscale','down'):('tailscale','disable'),('adguard','start'):('adguard','enable'),('adguard','stop'):('adguard','disable'),('adguard','restart'):('adguard','enable'),('openvpn','disconnect'):('openvpn','connect')}
 for svc,act in sorted(yaml_pairs):
  if f'{svc}:{act}' not in BRIDGE: errors.append(f'YAML action not allowed by bridge: {svc}:{act}')
- accepted=helper_actions.get(svc,set())
- # Status helpers and a few single-purpose helpers may not use a case dispatcher.
- if accepted and act not in accepted:
-  errors.append(f'YAML action not accepted by helper: {svc}:{act} (helper accepts {sorted(accepted)})')
+ hs,ha=ALIASES.get((svc,act),(svc,act)); accepted=helper_actions.get(hs,set())
+ if accepted and ha not in accepted: errors.append(f'YAML action not accepted by helper: {svc}:{act} -> {hs}:{ha} (helper accepts {sorted(accepted)})')
 
 read_file=ACL['mrouter-ui']['read']['file']; write_file=ACL['mrouter-ui']['write']['file']
 for h in ('/usr/libexec/mrouter-ui-action','/usr/libexec/mrouter-ui-config'):
  if h not in read_file and h not in write_file: errors.append(f'ACL missing {h}')
-
 menu_path=APP/'root/usr/share/luci/menu.d/zz-mrouter-yaml.json'
 if menu_path.exists():
  menu=json.loads(menu_path.read_text())
  for route,node in menu.items():
   path=((node.get('action') or {}).get('path') or '')
   if not path.startswith('mrouter-yaml/'): errors.append(f'{route}: generated route is not native YAML: {path}')
-
 mf=(APP/'Makefile').read_text()
 if 'rm -rf $(1)/www/luci-static/resources/view/mrouter' not in mf: errors.append('APK does not exclude legacy mrouter view directory')
-
 if errors:
  print('Mrouter native YAML UI audit FAILED:')
  for e in errors: print(' - '+e)
