@@ -11,6 +11,34 @@ function el(tag, cls, text){
     return n;
 }
 
+function isDesktop(){
+    return !window.matchMedia || window.matchMedia('(min-width: 851px)').matches;
+}
+
+/*
+ * Mrouter no longer uses menu-material. The inherited Material template still
+ * contains its old global loading and dark-mask elements, so make them inert.
+ * Without menu-material there is nobody upstream to clear the legacy
+ * "Collecting data..." overlay, which would otherwise cover stock LuCI views.
+ */
+function clearLegacyBlockingLayers(){
+    document.querySelectorAll('.main > .loading, body > .loading, .loading').forEach(function(node){
+        if(node && /Collecting data/i.test(node.textContent||'')){
+            node.style.display='none';
+            node.style.pointerEvents='none';
+            node.setAttribute('aria-hidden','true');
+        }
+    });
+
+    var mask=document.querySelector('.darkMask');
+    if(mask && isDesktop()){
+        mask.style.display='none';
+        mask.style.pointerEvents='none';
+        mask.style.opacity='0';
+        mask.setAttribute('aria-hidden','true');
+    }
+}
+
 function isCurrent(href){
     if(!href) return false;
     var p=window.location.pathname.replace(/\/$/,'');
@@ -75,6 +103,8 @@ function renderItem(item, openState){
 }
 
 function installShell(data){
+    clearLegacyBlockingLayers();
+
     var menu=document.getElementById('mainmenu');
     if(!menu || !data || !Array.isArray(data.navigation)) return;
 
@@ -102,13 +132,22 @@ function installShell(data){
         trigger.addEventListener('click',function(){ document.body.classList.toggle('mr-mobile-open'); });
         trigger.addEventListener('keydown',function(ev){ if(ev.key==='Enter'||ev.key===' '){ ev.preventDefault(); trigger.click(); } });
     }
+
+    clearLegacyBlockingLayers();
 }
 
 function boot(){
+    clearLegacyBlockingLayers();
+
     fetch(NAV_URL,{cache:'no-store'})
         .then(function(r){ if(!r.ok) throw new Error('navigation '+r.status); return r.json(); })
         .then(installShell)
         .catch(function(err){ console.error('Mrouter shell:',err); });
+
+    /* Catch legacy overlays reinserted by LuCI views without touching page UI. */
+    if(document.body && window.MutationObserver){
+        new MutationObserver(clearLegacyBlockingLayers).observe(document.body,{childList:true,subtree:true});
+    }
 }
 
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot,{once:true});
