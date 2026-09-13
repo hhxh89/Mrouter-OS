@@ -12,13 +12,8 @@ snapshot(){
     ROOTPW="$(awk -F: '$1=="root"{print $2}' /etc/shadow 2>/dev/null)"; PASS=0; case "$ROOTPW" in ''|'!'|'*') PASS=0 ;; *) PASS=1 ;; esac; printf 'PASS|%s\n' "$PASS"
     DEFAULT="$(ip -4 route show default 2>/dev/null | head -n1)"; DGW="$(printf '%s' "$DEFAULT"|awk '{for(i=1;i<=NF;i++)if($i=="via"){print $(i+1);exit}}')"; DDEV="$(printf '%s' "$DEFAULT"|awk '{for(i=1;i<=NF;i++)if($i=="dev"){print $(i+1);exit}}')"; DSRC="$(ip -4 addr show dev "$DDEV" 2>/dev/null|awk '/inet /{print $2;exit}'|cut -d/ -f1)"
     printf 'DEFAULT|%s|%s|%s\n' "$DDEV" "$DGW" "$DSRC"
-    for S in $(uci show network 2>/dev/null | sed -n 's/^network\.\([^.=]*\)=interface$/\1/p'); do
-        PROTO="$(uci -q get network.$S.proto || true)"; DEV="$(uci -q get network.$S.device || uci -q get network.$S.ifname || true)"; IP="$(uci -q get network.$S.ipaddr || true)"; MASK="$(uci -q get network.$S.netmask || true)"; GW="$(uci -q get network.$S.gateway || true)"; ROLE="$S"
-        UP=0; ubus call "network.interface.$S" status 2>/dev/null | jsonfilter -e '@.up' 2>/dev/null | grep -q true && UP=1 || true
-        printf 'NET|%s|%s|%s|%s|%s|%s|%s|%s\n' "$S" "$PROTO" "$DEV" "$IP" "$MASK" "$GW" "$ROLE" "$UP"
-    done
-    DNSSEC="$(uci -q get dhcp.@dnsmasq[0].dnssec || true)"; DOMAIN="$(uci -q get dhcp.@dnsmasq[0].domain || true)"; LOCAL="$(uci -q get dhcp.@dnsmasq[0].local || true)"; NORES="$(uci -q get dhcp.@dnsmasq[0].noresolv || true)"; PORT="$(uci -q get dhcp.@dnsmasq[0].port || echo 53)"; SERVERS="$(uci -q get dhcp.@dnsmasq[0].server 2>/dev/null | tr '\n' ',' | sed 's/,$//')"
-    printf 'DNS|%s|%s|%s|%s|%s|%s\n' "$(esc "$DOMAIN")" "$(esc "$LOCAL")" "${NORES:-0}" "$(esc "$SERVERS")" "$PORT" "${DNSSEC:-0}"
+    for S in $(uci show network 2>/dev/null | sed -n 's/^network\.\([^.=]*\)=interface$/\1/p'); do PROTO="$(uci -q get network.$S.proto || true)"; DEV="$(uci -q get network.$S.device || uci -q get network.$S.ifname || true)"; IP="$(uci -q get network.$S.ipaddr || true)"; MASK="$(uci -q get network.$S.netmask || true)"; GW="$(uci -q get network.$S.gateway || true)"; UP=0; ubus call "network.interface.$S" status 2>/dev/null | jsonfilter -e '@.up' 2>/dev/null | grep -q true && UP=1 || true; printf 'NET|%s|%s|%s|%s|%s|%s|%s|%s\n' "$S" "$PROTO" "$DEV" "$IP" "$MASK" "$GW" "$S" "$UP"; done
+    DNSSEC="$(uci -q get dhcp.@dnsmasq[0].dnssec || true)"; DOMAIN="$(uci -q get dhcp.@dnsmasq[0].domain || true)"; LOCAL="$(uci -q get dhcp.@dnsmasq[0].local || true)"; NORES="$(uci -q get dhcp.@dnsmasq[0].noresolv || true)"; PORT="$(uci -q get dhcp.@dnsmasq[0].port || echo 53)"; SERVERS="$(uci -q get dhcp.@dnsmasq[0].server 2>/dev/null | tr '\n' ',' | sed 's/,$//')"; printf 'DNS|%s|%s|%s|%s|%s|%s\n' "$(esc "$DOMAIN")" "$(esc "$LOCAL")" "${NORES:-0}" "$(esc "$SERVERS")" "$PORT" "${DNSSEC:-0}"
     for S in $(uci show dhcp 2>/dev/null | sed -n 's/^dhcp\.\([^.=]*\)=dhcp$/\1/p'); do printf 'DHCP|%s|%s|%s|%s|%s|%s\n' "$S" "$(uci -q get dhcp.$S.interface || true)" "$(uci -q get dhcp.$S.ignore || echo 0)" "$(uci -q get dhcp.$S.start || true)" "$(uci -q get dhcp.$S.limit || true)" "$(uci -q get dhcp.$S.leasetime || true)"; done
     for S in $(uci show dhcp 2>/dev/null | sed -n 's/^dhcp\.\([^.=]*\)=host$/\1/p'); do printf 'RES|%s|%s|%s\n' "$(esc "$(uci -q get dhcp.$S.name || true)")" "$(uci -q get dhcp.$S.mac || true)" "$(uci -q get dhcp.$S.ip || true)"; done
     for S in $(uci show firewall 2>/dev/null | sed -n 's/^firewall\.\([^.=]*\)=zone$/\1/p'); do N="$(uci -q get firewall.$S.name || echo "$S")"; printf 'ZONE|%s|%s|%s|%s|%s|%s\n' "$N" "$(uci -q get firewall.$S.input || true)" "$(uci -q get firewall.$S.output || true)" "$(uci -q get firewall.$S.forward || true)" "$(uci -q get firewall.$S.network 2>/dev/null | tr '\n' ',' | sed 's/,$//')" "$(uci -q get firewall.$S.masq || echo 0)"; done
@@ -29,69 +24,14 @@ snapshot(){
     WR=0; /etc/init.d/uhttpd running >/dev/null 2>&1&&WR=1; HTTP="$(uci -q get uhttpd.main.listen_http 2>/dev/null | tr '\n' ',' | sed 's/,$//')"; HTTPS="$(uci -q get uhttpd.main.listen_https 2>/dev/null | tr '\n' ',' | sed 's/,$//')"; RED="$(uci -q get uhttpd.main.redirect_https || echo 0)"; printf 'WEB|%s|%s|%s|%s\n' "$WR" "$(esc "$HTTP")" "$(esc "$HTTPS")" "$RED"
     for N in network firewall dnsmasq dropbear uhttpd rpcd tailscale adguardhome pbr sqm; do service_state "$N"; done
     [ -r /etc/crontabs/root ] && sed '/^[[:space:]]*#/d;/^[[:space:]]*$/d' /etc/crontabs/root | while IFS= read -r L; do printf 'CRON|%s\n' "$(esc "$L")"; done
-    LEASECOUNT=0
-    [ -r /tmp/dhcp.leases ] && LEASECOUNT="$(wc -l < /tmp/dhcp.leases | tr -d ' ')"
-    printf 'LEASES|%s\n' "$LEASECOUNT"
+    LEASECOUNT=0; [ -r /tmp/dhcp.leases ] && LEASECOUNT="$(wc -l < /tmp/dhcp.leases | tr -d ' ')"; printf 'LEASES|%s\n' "$LEASECOUNT"
 }
 
-sqm_save(){
-    EN="${2:-0}"; IF="${3:-}"; DOWN="${4:-0}"; UP="${5:-0}"; PROFILE="${6:-balanced}"
-    case "$EN" in 0|1) ;; *) exit 1;; esac
-    case "$DOWN:$UP" in *[!0-9:]*|'':*) echo 'Invalid bandwidth' >&2; exit 1;; esac
-    S="$(uci show sqm 2>/dev/null | sed -n 's/^sqm\.\([^.=]*\)=queue$/\1/p' | head -n1)"; [ -n "$S" ] || { S=wan; uci set sqm.$S='queue'; }
-    uci set sqm.$S.enabled="$EN"; [ -n "$IF" ] && uci set sqm.$S.interface="$IF"; uci set sqm.$S.download="$DOWN"; uci set sqm.$S.upload="$UP"; uci set sqm.$S.qdisc='cake'; uci set sqm.$S.script='piece_of_cake.qos'; uci set sqm.$S.linklayer='none'; uci set sqm.$S.debug_logging='0'; uci set sqm.$S.verbosity='5'
-    uci set mrouter.system.qos_profile="$PROFILE" 2>/dev/null || true; uci commit sqm; uci commit mrouter 2>/dev/null || true
-    /etc/init.d/sqm enable >/dev/null 2>&1 || true; /etc/init.d/sqm restart >/dev/null 2>&1 || true
-    snapshot
-}
-
-system_save(){
-    H="${2:-}"; Z="${3:-}"; [ -n "$H" ] || { echo 'Hostname required' >&2; exit 1; }; printf '%s' "$H"|grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$' || { echo 'Invalid hostname' >&2; exit 1; }
-    uci set system.@system[0].hostname="$H"
-    if [ -n "$Z" ]; then
-        uci set system.@system[0].zonename="$Z"
-        case "$Z" in
-          Europe/London) POSIX='GMT0BST,M3.5.0/1,M10.5.0' ;;
-          Europe/Berlin|Europe/Paris|Europe/Rome|Europe/Madrid) POSIX='CET-1CEST,M3.5.0,M10.5.0/3' ;;
-          America/New_York) POSIX='EST5EDT,M3.2.0,M11.1.0' ;;
-          America/Los_Angeles) POSIX='PST8PDT,M3.2.0,M11.1.0' ;;
-          UTC|Etc/UTC) POSIX='UTC' ;;
-          *) POSIX="$(uci -q get system.@system[0].timezone || echo UTC)" ;;
-        esac
-        uci set system.@system[0].timezone="$POSIX"
-    fi
-    uci commit system; /etc/init.d/system reload >/dev/null 2>&1 || true; snapshot
-}
-
-ssh_save(){
-    EN="${2:-1}"; PORT="${3:-22}"; PA="${4:-on}"; case "$PORT" in ''|*[!0-9]*) exit 1;; esac; [ "$PORT" -ge 1 ]&&[ "$PORT" -le 65535 ]||exit 1
-    uci set dropbear.@dropbear[0].Port="$PORT"; uci set dropbear.@dropbear[0].PasswordAuth="$PA"; uci commit dropbear
-    if [ "$EN" = 1 ]; then /etc/init.d/dropbear enable; /etc/init.d/dropbear restart; else /etc/init.d/dropbear disable; /etc/init.d/dropbear stop; fi >/dev/null 2>&1 || true
-    snapshot
-}
-
+sqm_save(){ EN="${2:-0}"; IF="${3:-}"; DOWN="${4:-0}"; UP="${5:-0}"; PROFILE="${6:-balanced}"; case "$EN" in 0|1) ;; *) exit 1;; esac; case "$DOWN:$UP" in *[!0-9:]*|'':*) echo 'Invalid bandwidth' >&2; exit 1;; esac; S="$(uci show sqm 2>/dev/null | sed -n 's/^sqm\.\([^.=]*\)=queue$/\1/p' | head -n1)"; [ -n "$S" ] || { S=wan; uci set sqm.$S='queue'; }; uci set sqm.$S.enabled="$EN"; [ -n "$IF" ] && uci set sqm.$S.interface="$IF"; uci set sqm.$S.download="$DOWN"; uci set sqm.$S.upload="$UP"; uci set sqm.$S.qdisc='cake'; uci set sqm.$S.script='piece_of_cake.qos'; uci set sqm.$S.linklayer='none'; uci commit sqm; uci set mrouter.system.qos_profile="$PROFILE" 2>/dev/null || true; uci commit mrouter 2>/dev/null || true; /etc/init.d/sqm enable >/dev/null 2>&1 || true; /etc/init.d/sqm restart >/dev/null 2>&1 || true; snapshot; }
+system_save(){ H="${2:-}"; Z="${3:-}"; [ -n "$H" ] || { echo 'Hostname required' >&2; exit 1; }; printf '%s' "$H"|grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$' || { echo 'Invalid hostname' >&2; exit 1; }; uci set system.@system[0].hostname="$H"; if [ -n "$Z" ]; then uci set system.@system[0].zonename="$Z"; case "$Z" in Europe/London) POSIX='GMT0BST,M3.5.0/1,M10.5.0' ;; Europe/Berlin|Europe/Paris|Europe/Rome|Europe/Madrid) POSIX='CET-1CEST,M3.5.0,M10.5.0/3' ;; America/New_York) POSIX='EST5EDT,M3.2.0,M11.1.0' ;; America/Los_Angeles) POSIX='PST8PDT,M3.2.0,M11.1.0' ;; UTC|Etc/UTC) POSIX='UTC' ;; *) POSIX="$(uci -q get system.@system[0].timezone || echo UTC)" ;; esac; uci set system.@system[0].timezone="$POSIX"; fi; uci commit system; /etc/init.d/system reload >/dev/null 2>&1 || true; snapshot; }
+ssh_save(){ EN="${2:-1}"; PORT="${3:-22}"; PA="${4:-on}"; case "$PORT" in ''|*[!0-9]*) exit 1;; esac; [ "$PORT" -ge 1 ]&&[ "$PORT" -le 65535 ]||exit 1; uci set dropbear.@dropbear[0].Port="$PORT"; uci set dropbear.@dropbear[0].PasswordAuth="$PA"; uci commit dropbear; if [ "$EN" = 1 ]; then /etc/init.d/dropbear enable; /etc/init.d/dropbear restart; else /etc/init.d/dropbear disable; /etc/init.d/dropbear stop; fi >/dev/null 2>&1 || true; snapshot; }
 service_action(){ N="${2:-}"; A="${3:-}"; [ -x "/etc/init.d/$N" ] || exit 1; case "$A" in start|stop|restart|enable|disable) /etc/init.d/$N "$A" ;; *) exit 1;; esac; }
-
-diagnostics(){
-    KIND="${2:-}"; TARGET="${3:-}"; EXTRA="${4:-}"
-    case "$KIND" in
-      ping) [ -n "$TARGET" ] || TARGET=1.1.1.1; ping -4 -c 4 -W 2 "$TARGET" 2>&1 ;;
-      ping6) [ -n "$TARGET" ] || TARGET=2606:4700:4700::1111; ping -6 -c 4 -W 2 "$TARGET" 2>&1 ;;
-      trace) [ -n "$TARGET" ] || TARGET=1.1.1.1; traceroute -4 -n -w 2 -q 1 "$TARGET" 2>&1 ;;
-      dns) [ -n "$TARGET" ] || TARGET=openwrt.org; if [ -n "$EXTRA" ]; then nslookup "$TARGET" "$EXTRA" 2>&1; else nslookup "$TARGET" 2>&1; fi ;;
-      port) H="$TARGET"; P="$EXTRA"; [ -n "$H" ]&&[ -n "$P" ]||exit 1; nc -z -w 3 "$H" "$P" >/dev/null 2>&1 && echo "OPEN|$H|$P" || { echo "CLOSED|$H|$P"; exit 1; } ;;
-      selftest)
-        echo "CHECK|Default route|$(ip -4 route show default >/dev/null 2>&1&&echo PASS||echo FAIL)"
-        GW="$(ip -4 route show default|awk '/default/{for(i=1;i<=NF;i++)if($i=="via"){print $(i+1);exit}}')"; [ -n "$GW" ]&&ping -c1 -W2 "$GW" >/dev/null 2>&1&&echo 'CHECK|Gateway|PASS'||echo 'CHECK|Gateway|FAIL'
-        ping -c1 -W2 1.1.1.1 >/dev/null 2>&1&&echo 'CHECK|Internet|PASS'||echo 'CHECK|Internet|FAIL'
-        nslookup openwrt.org >/dev/null 2>&1&&echo 'CHECK|DNS|PASS'||echo 'CHECK|DNS|FAIL'
-        date +%s | awk '{if($1>1700000000)print "CHECK|System time|PASS";else print "CHECK|System time|FAIL"}'
-        for S in dnsmasq rpcd uhttpd; do /etc/init.d/$S running >/dev/null 2>&1&&echo "CHECK|$S|PASS"||echo "CHECK|$S|FAIL"; done
-        ;;
-      *) echo 'Unknown diagnostic' >&2; exit 2;;
-    esac
-}
-
+diagnostics(){ KIND="${2:-}"; TARGET="${3:-}"; EXTRA="${4:-}"; case "$KIND" in ping) [ -n "$TARGET" ] || TARGET=1.1.1.1; ping -4 -c 4 -W 2 "$TARGET" 2>&1 ;; ping6) [ -n "$TARGET" ] || TARGET=2606:4700:4700::1111; ping -6 -c 4 -W 2 "$TARGET" 2>&1 ;; trace) [ -n "$TARGET" ] || TARGET=1.1.1.1; traceroute -4 -n -w 2 -q 1 "$TARGET" 2>&1 ;; dns) [ -n "$TARGET" ] || TARGET=openwrt.org; if [ -n "$EXTRA" ]; then nslookup "$TARGET" "$EXTRA" 2>&1; else nslookup "$TARGET" 2>&1; fi ;; port) H="$TARGET"; P="$EXTRA"; [ -n "$H" ]&&[ -n "$P" ]||exit 1; nc -z -w 3 "$H" "$P" >/dev/null 2>&1 && echo "OPEN|$H|$P" || { echo "CLOSED|$H|$P"; exit 1; } ;; selftest) echo "CHECK|Default route|$(ip -4 route show default >/dev/null 2>&1&&echo PASS||echo FAIL)"; GW="$(ip -4 route show default|awk '/default/{for(i=1;i<=NF;i++)if($i=="via"){print $(i+1);exit}}')"; [ -n "$GW" ]&&ping -c1 -W2 "$GW" >/dev/null 2>&1&&echo 'CHECK|Gateway|PASS'||echo 'CHECK|Gateway|FAIL'; ping -c1 -W2 1.1.1.1 >/dev/null 2>&1&&echo 'CHECK|Internet|PASS'||echo 'CHECK|Internet|FAIL'; nslookup openwrt.org >/dev/null 2>&1&&echo 'CHECK|DNS|PASS'||echo 'CHECK|DNS|FAIL'; date +%s | awk '{if($1>1700000000)print "CHECK|System time|PASS";else print "CHECK|System time|FAIL"}'; for S in dnsmasq rpcd uhttpd; do /etc/init.d/$S running >/dev/null 2>&1&&echo "CHECK|$S|PASS"||echo "CHECK|$S|FAIL"; done ;; *) echo 'Unknown diagnostic' >&2; exit 2;; esac; }
 logs(){ FILTER="${2:-}"; if [ -n "$FILTER" ]; then logread 2>/dev/null | grep -i -- "$FILTER" | tail -n 300; else logread 2>/dev/null | tail -n 300; fi; }
 processes(){ ps w 2>/dev/null | head -n 250; }
 packages(){ apk list --installed 2>/dev/null | head -n 500; }
@@ -102,11 +42,11 @@ case "$ACTION" in
  sqm-save) sqm_save "$@" ;;
  system-save) system_save "$@" ;;
  ssh-save) ssh_save "$@" ;;
- service) service_action "$@" ;;
- diagnostic) diagnostics "$@" ;;
+ service|service-action) service_action "$@" ;;
+ diagnostic|diagnostics) diagnostics "$@" ;;
  logs) logs "$@" ;;
  processes) processes ;;
  packages) packages ;;
  keys) keys ;;
- *) echo 'Usage: mrouter-advanced {snapshot|sqm-save|system-save|ssh-save|service|diagnostic|logs|processes|packages|keys}' >&2; exit 2;;
+ *) echo 'Usage: mrouter-advanced {snapshot|sqm-save|system-save|ssh-save|service-action|diagnostics|logs|processes|packages|keys}' >&2; exit 2;;
 esac
