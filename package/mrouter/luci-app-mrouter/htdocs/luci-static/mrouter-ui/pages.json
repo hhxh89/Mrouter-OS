@@ -37,6 +37,7 @@
     "processes":{"title":"Processes","renderer":"component","component":"processes-modern"},
     "support":{"title":"Support Bundle","renderer":"component","component":"support"},
     "terminal":{"title":"Terminal","renderer":"component","component":"terminal"},
-    "packages":{"title":"Package Manager","renderer":"component","component":"packages-modern"}
+    "packages":{"title":"Package Manager","renderer":"component","component":"packages-modern"},
+    "ui-designer":{"title":"Mrouter UI Designer","subtitle":"Visual and YAML interface customisation","renderer":"component","component":"ui-designer"}
   }
 }
