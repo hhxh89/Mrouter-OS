@@ -22,5 +22,11 @@
     "order": 35,
     "action": { "type": "view", "path": "mrouter/support" },
     "depends": { "acl": [ "mrouter-ui" ] }
+  },
+  "admin/advanced/ui-designer": {
+    "title": "UI Designer",
+    "order": 0,
+    "action": { "type": "view", "path": "mrouter/ui-designer" },
+    "depends": { "acl": [ "mrouter-ui" ] }
   }
 }
