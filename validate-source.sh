@@ -11,7 +11,11 @@ files=[
 'package/mrouter/luci-app-mrouter/root/usr/share/luci/menu.d/mrouter-next.json',
 'package/mrouter/luci-app-mrouter/root/usr/share/rpcd/acl.d/mrouter.json',
 'package/mrouter/mrouter-setup/root/usr/share/luci/menu.d/mrouter-setup.json',
-'package/mrouter/mrouter-setup/root/usr/share/rpcd/acl.d/mrouter-setup.json']
+'package/mrouter/mrouter-setup/root/usr/share/rpcd/acl.d/mrouter-setup.json',
+'package/mrouter/luci-app-mrouter/htdocs/luci-static/mrouter-ui/navigation.json',
+'package/mrouter/luci-app-mrouter/htdocs/luci-static/mrouter-ui/pages.json',
+'package/mrouter/luci-app-mrouter/htdocs/luci-static/mrouter-ui/appearance.json',
+'package/mrouter/luci-app-mrouter/htdocs/luci-static/mrouter-ui/user-config.json']
 for f in files:
     with open(f,encoding='utf-8') as h: json.load(h)
 print('JSON: OK')
@@ -31,6 +35,13 @@ for F in \
  package/mrouter/luci-app-mrouter/htdocs/luci-static/resources/view/mrouter/networks.js \
  package/mrouter/luci-app-mrouter/htdocs/luci-static/resources/view/mrouter/dhcp-dns.js \
  package/mrouter/luci-app-mrouter/htdocs/luci-static/resources/view/mrouter/firewall-modern.js \
+ package/mrouter/luci-app-mrouter/htdocs/luci-static/resources/view/mrouter/ui-designer.js \
+ package/mrouter/luci-app-mrouter/htdocs/luci-static/mrouter-ui/mrouter-shell.js \
+ package/mrouter/luci-app-mrouter/htdocs/luci-static/mrouter-ui/mrouter-shell.css \
+ package/mrouter/luci-app-mrouter/ui-src/navigation.yaml \
+ package/mrouter/luci-app-mrouter/ui-src/pages.yaml \
+ package/mrouter/luci-app-mrouter/ui-src/appearance.yaml \
+ package/mrouter/mrouter-core/files/usr/libexec/mrouter-ui-config \
  package/mrouter/mrouter-core/files/usr/libexec/mrouter-client-data \
  package/mrouter/mrouter-core/files/usr/libexec/mrouter-clients \
  package/mrouter/mrouter-core/files/usr/libexec/mrouter-wireless \
@@ -46,6 +57,10 @@ for P in luci-app-mrouter luci-theme-mrouter mrouter-core mrouter-setup mrouter-
 for P in mrouter-core luci-app-mrouter luci-theme-mrouter mrouter-setup mrouter-os; do grep -q "^CONFIG_PACKAGE_${P}=y$" build/mrouter-v1.diffconfig || { echo "Build seed missing $P" >&2; FAIL=1; }; done
 for X in strongswan collectd travelmate smartdns stubby sing-box xray-core zerotier v2raya vnstat2 netifyd; do if grep -Eq "^CONFIG_PACKAGE_${X}=y" build/mrouter-v1.diffconfig; then echo "Unexpected removed package selected: $X" >&2; FAIL=1; fi; done
 grep -Fq "grep -Fq '|'" package/mrouter/mrouter-core/files/usr/libexec/mrouter-services || { echo 'Local Services name-validation fix missing' >&2; FAIL=1; }
+! grep -R "menu-material" package/mrouter/luci-theme-mrouter/ucode/template/themes/mrouter package/mrouter/luci-app-mrouter/htdocs/luci-static/mrouter-ui >/dev/null 2>&1 || { echo 'Legacy menu-material reference remains in Mrouter shell' >&2; FAIL=1; }
+grep -q '^appearance:' package/mrouter/luci-app-mrouter/ui-src/appearance.yaml || { echo 'appearance.yaml malformed' >&2; FAIL=1; }
+grep -q '^navigation:' package/mrouter/luci-app-mrouter/ui-src/navigation.yaml || { echo 'navigation.yaml malformed' >&2; FAIL=1; }
+grep -q '^pages:' package/mrouter/luci-app-mrouter/ui-src/pages.yaml || { echo 'pages.yaml malformed' >&2; FAIL=1; }
 CHANNEL="$(sed -n 's/^MROUTER_CHANNEL="\(.*\)"/\1/p' package/mrouter/mrouter-core/files/etc/mrouter-release)"; case "$CHANNEL" in development|stable) ;; *) echo "Invalid release channel: $CHANNEL" >&2; FAIL=1;; esac
 SCHEMA="$(sed -n 's/^MROUTER_SCHEMA="\(.*\)"/\1/p' package/mrouter/mrouter-core/files/etc/mrouter-release)"; grep -q "TARGET_SCHEMA=$SCHEMA" package/mrouter/mrouter-core/files/usr/libexec/mrouter-migrate || { echo 'Schema mismatch between release metadata and migrator' >&2; FAIL=1; }
 [ "$FAIL" = 0 ] || exit 1
