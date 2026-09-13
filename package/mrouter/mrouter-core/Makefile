@@ -40,12 +40,15 @@ endef
 define Package/mrouter-core/install
 	$(INSTALL_DIR) $(1)/usr/libexec
 	$(CP) ./files/usr/libexec/* $(1)/usr/libexec/
+	chmod 0755 $(1)/usr/libexec/*
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(CP) ./files/etc/init.d/* $(1)/etc/init.d/
+	chmod 0755 $(1)/etc/init.d/*
 	$(INSTALL_DIR) $(1)/etc/config
 	$(CP) ./files/etc/config/* $(1)/etc/config/
 	$(INSTALL_DIR) $(1)/etc/uci-defaults
 	$(CP) ./files/etc/uci-defaults/* $(1)/etc/uci-defaults/
+	chmod 0755 $(1)/etc/uci-defaults/*
 	$(INSTALL_DIR) $(1)/etc
 	$(INSTALL_DATA) ./files/etc/mrouter-release $(1)/etc/mrouter-release
 endef
