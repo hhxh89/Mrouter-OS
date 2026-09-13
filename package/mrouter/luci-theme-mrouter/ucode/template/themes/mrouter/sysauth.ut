@@ -1,60 +1,46 @@
-{# Mrouter-OS login page; preserves normal LuCI username/password authentication. #}
-{% include('header') %}
-
-<form method="post" class="mrouter-login-form">
-<div class="cbi-map mrouter-login-map">
-
-{% if (fuser): %}
-<div class="alert-message warning"><p>{{ _('Invalid username and/or password! Please try again.') }}</p></div>
-{% endif %}
-{% if (auth_message && !fuser): %}
-<div class="alert-message"><p>{{ auth_message }}</p></div>
-{% endif %}
-
-<h2 name="content">Welcome to Mrouter-OS</h2>
-<div class="cbi-map-descr">Sign in to manage this router.</div>
-
-<div class="mrouter-private-notice">
-<strong>Private management interface</strong>
-<span>For the owner and authorised users only.</span>
-</div>
-
-<div class="cbi-section mrouter-login-fields"><div class="cbi-section-node">
-<div class="cbi-value">
-<label class="cbi-value-title">{{ _('Username') }}</label>
-<div class="cbi-value-field"><input class="cbi-input-text" type="text" name="luci_username" value="{{ entityencode(duser, true) }}" autocomplete="username" /></div>
-</div>
-<div class="cbi-value cbi-value-last">
-<label class="cbi-value-title">{{ _('Password') }}</label>
-<div class="cbi-value-field"><input class="cbi-input-text" type="password" name="luci_password" autocomplete="current-password" /></div>
-</div>
-
-{% if (auth_fields): %}
-{% for (let field in auth_fields): %}
-<div class="cbi-value">
-<label class="cbi-value-title">{{ _(field.label ?? field.name) }}</label>
-<div class="cbi-value-field"><input class="cbi-input-text" type="{{ field.type ?? 'text' }}" name="{{ field.name }}" {% if (field.placeholder): %}placeholder="{{ field.placeholder }}"{% endif %} {% if (field.inputmode): %}inputmode="{{ field.inputmode }}"{% endif %} {% if (field.pattern): %}pattern="{{ field.pattern }}"{% endif %} {% if (field.maxlength): %}maxlength="{{ field.maxlength }}"{% endif %} {% if (field.autocomplete): %}autocomplete="{{ field.autocomplete }}"{% endif %} {% if (field.required): %}required{% endif %} /></div>
-</div>
-{% endfor %}
-{% endif %}
-{% if (auth_html): %}<div class="cbi-value">{{ auth_html }}</div>{% endif %}
+{# Standalone Mrouter-OS login. Uses LuCI authentication fields but no Material shell/menu. #}
+{%
+    http.prepare_content('text/html; charset=UTF-8');
+-%}
+<!DOCTYPE html>
+<html lang="{{ dispatcher.lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mrouter-OS</title>
+<link rel="icon" href="{{ media }}/logo.svg" sizes="any">
+<style>
+:root{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#1c1c1e;background:#fff;color-scheme:light}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#fff}body{min-height:100vh;display:grid;grid-template-rows:60px 1fr auto}
+.mr-login-header{display:flex;align-items:center;gap:10px;padding:0 18px;border-bottom:1px solid #e5e5ea;background:#fff;font-size:21px;font-weight:700}
+.mr-login-logo{width:34px;height:34px;flex:none}.mr-login-main{display:grid;place-items:center;padding:40px 20px}.mr-login-panel{width:min(420px,100%);padding:0}
+h1{margin:0 0 6px;font-size:30px;letter-spacing:-.6px}.mr-sub{margin:0 0 24px;color:#8e8e93;font-size:14px}.mr-notice{margin:0 0 22px;padding:14px 16px;border-radius:12px;background:#f2f2f7}.mr-notice strong,.mr-notice span{display:block}.mr-notice span{margin-top:3px;color:#636366;font-size:13px}
+.mr-alert{margin:0 0 18px;padding:12px 14px;border-radius:10px;background:#fff2f1;color:#d70015;border:1px solid #ffd1cd;font-size:13px}.mr-field{display:block;margin-bottom:15px}.mr-field span{display:block;margin:0 0 6px;font-size:13px;font-weight:600}.mr-field input{width:100%;height:44px;padding:0 13px;border:1px solid #d1d1d6;border-radius:10px;background:#fff;color:#1c1c1e;font:inherit;outline:none}.mr-field input:focus{border-color:#007aff;box-shadow:0 0 0 3px rgba(0,122,255,.12)}
+.mr-login-btn{width:100%;height:44px;margin-top:3px;border:0;border-radius:10px;background:#007aff;color:#fff;font:inherit;font-weight:650;cursor:pointer}.mr-login-btn:hover{background:#0066d6}.mr-login-footer{padding:18px;text-align:center;color:#8e8e93;font-size:12px}
+@media(max-width:520px){body{grid-template-rows:56px 1fr auto}.mr-login-main{place-items:start center;padding-top:54px}h1{font-size:27px}}
+</style>
+</head>
+<body>
+<header class="mr-login-header">
+<svg class="mr-login-logo" viewBox="0 0 64 64" aria-hidden="true"><rect x="3" y="3" width="58" height="58" rx="16" fill="#007AFF"/><path d="M16 44V20L32 35L48 20V44" fill="none" stroke="#fff" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+<span>Mrouter-OS</span>
+</header>
+<main class="mr-login-main">
+<form method="post" class="mr-login-panel">
+{% if (fuser): %}<div class="mr-alert">{{ _('Invalid username and/or password! Please try again.') }}</div>{% endif %}
+{% if (auth_message && !fuser): %}<div class="mr-alert">{{ auth_message }}</div>{% endif %}
+<h1>Welcome to Mrouter-OS</h1>
+<p class="mr-sub">Sign in to manage this router.</p>
+<div class="mr-notice"><strong>Private management interface</strong><span>For the owner and authorised users only.</span></div>
+<label class="mr-field"><span>{{ _('Username') }}</span><input type="text" name="luci_username" value="{{ entityencode(duser, true) }}" autocomplete="username"></label>
+<label class="mr-field"><span>{{ _('Password') }}</span><input type="password" name="luci_password" autocomplete="current-password"></label>
+{% if (auth_fields): %}{% for (let field in auth_fields): %}<label class="mr-field"><span>{{ _(field.label ?? field.name) }}</span><input type="{{ field.type ?? 'text' }}" name="{{ field.name }}" {% if (field.placeholder): %}placeholder="{{ field.placeholder }}"{% endif %} {% if (field.inputmode): %}inputmode="{{ field.inputmode }}"{% endif %} {% if (field.pattern): %}pattern="{{ field.pattern }}"{% endif %} {% if (field.maxlength): %}maxlength="{{ field.maxlength }}"{% endif %} {% if (field.autocomplete): %}autocomplete="{{ field.autocomplete }}"{% endif %} {% if (field.required): %}required{% endif %}></label>{% endfor %}{% endif %}
+{% if (auth_html): %}<div>{{ auth_html }}</div>{% endif %}
 {% if (auth_assets): %}{% for (let asset in auth_assets): %}{% if (asset.type == 'script'): %}<script src="{{ asset.src }}"></script>{% endif %}{% endfor %}{% endif %}
-</div></div>
-
-<div class="cbi-page-actions mrouter-login-actions">
-<input type="submit" value="{{ _('Log in') }}" class="btn cbi-button cbi-button-apply" />
-</div>
-
-</div>
+<button class="mr-login-btn" type="submit">{{ _('Log in') }}</button>
 </form>
-
-<script>
-(function() {
-    var user = document.getElementsByName('luci_username')[0];
-    var pass = document.getElementsByName('luci_password')[0];
-    if (user && user.value && pass) pass.focus();
-    else if (user) user.focus();
-})();
-</script>
-
-{% include('footer') %}
+</main>
+<footer class="mr-login-footer">Mrouter-OS &bull; Powered by {{ version.distname }} {{ version.distversion }}</footer>
+<script>(function(){var u=document.getElementsByName('luci_username')[0],p=document.getElementsByName('luci_password')[0];if(u&&u.value&&p)p.focus();else if(u)u.focus();})();</script>
+</body>
+</html>
