@@ -1,0 +1,109 @@
+version: 1
+pages:
+  admin-password:
+    sources:
+      snapshot: { service: advanced, action: snapshot, parser: pipe }
+    layout:
+    - { type: records, title: Account Security, source: snapshot, tags: [PASS], columns: [Password set] }
+    - type: form
+      title: Change Administrator Password
+      fields:
+      - { id: password, type: password, label: New password, help: Minimum 8 characters. }
+      actions:
+      - { label: Change Password, service: advanced, action: password-set, args: [$field.password], style: danger, confirm: 'Change the OpenWrt root administrator password?', reload: true }
+  admin-sshkeys:
+    sources:
+      keys: { service: advanced, action: keys, parser: pipe }
+    layout:
+    - type: records
+      title: Authorized Public Keys
+      source: keys
+      tags: [KEY]
+      columns: [Index, Type, Comment]
+      row_actions:
+      - { label: Delete, service: advanced, action: key-delete, args: [$row.0], style: danger, confirm: 'Delete this authorized SSH key?', reload: true }
+    - type: form
+      title: Add Public Key
+      fields:
+      - { id: key, type: textarea, label: Public key, rows: 4, help: Public key only; private keys are never accepted. }
+      actions:
+      - { label: Add Key, service: advanced, action: key-add, args: [$field.key], style: primary, reload: true }
+  admin-web:
+    sources:
+      snapshot: { service: advanced, action: snapshot, parser: pipe }
+    layout:
+    - { type: records, title: Web Interface, source: snapshot, tags: [WEB], columns: [Running, HTTP listeners, HTTPS listeners, Redirect HTTPS] }
+    - type: form
+      title: Web Listener Settings
+      fields:
+      - { id: http, type: number, label: HTTP port, default: 80 }
+      - { id: https, type: number, label: HTTPS port, default: 443 }
+      - { id: redirect, type: toggle, label: Redirect HTTP to HTTPS, default: false }
+      actions:
+      - { label: Save Web Access, service: advanced, action: web-save, args: [$field.http, $field.https, $field.redirect], style: danger, confirm: 'Changing web listener ports may interrupt this session. Continue?', reload: true }
+  admin-backup:
+    layout:
+    - { type: card, title: Configuration Backup, text: Create a sysupgrade-compatible backup before upgrades or major configuration changes. }
+    - type: actions
+      title: Backup
+      items:
+      - { label: Create Configuration Backup, service: advanced, action: backup-create, style: primary, output: true }
+    - type: notice
+      text: The helper returns the protected local backup path. Authenticated download and restore will use the native file-transfer endpoint; firmware upgrades remain separate from normal Mrouter package updates.
+  logs:
+    sources:
+      logs: { service: advanced, action: logs, parser: lines }
+    layout:
+    - type: form
+      title: Log Filter
+      fields:
+      - { id: filter, type: text, label: Contains, placeholder: error }
+      actions:
+      - { label: Search Log, service: advanced, action: logs, args: [$field.filter], output: true, style: secondary }
+    - { type: code, title: Recent Log, source: logs }
+  support:
+    sources:
+      support: { service: support, action: status, parser: lines }
+    layout:
+    - { type: code, title: Support Summary, source: support }
+    - type: actions
+      title: Support Tools
+      items:
+      - { label: Refresh Summary, service: support, action: refresh, style: secondary, reload: true }
+      - { label: Generate Support Bundle, service: support, action: bundle, style: primary, output: true }
+  packages:
+    sources:
+      packages: { service: advanced, action: packages, parser: lines }
+    layout:
+    - type: form
+      title: Package Actions
+      fields:
+      - { id: package, type: text, label: Package name, placeholder: htop }
+      actions:
+      - { label: Refresh Repositories, service: advanced, action: pkg-refresh, style: secondary, output: true }
+      - { label: Install, service: advanced, action: pkg-install, args: [$field.package], style: primary, output: true, reload: true }
+      - { label: Upgrade, service: advanced, action: pkg-upgrade, args: [$field.package], style: secondary, output: true, reload: true }
+      - { label: Remove, service: advanced, action: pkg-remove, args: [$field.package], style: danger, confirm: 'Remove this package?', output: true, reload: true }
+    - { type: code, title: Installed Packages, source: packages }
+  ui-designer:
+    sources:
+      appearance:
+        service: ui-config
+        action: status
+        parser: pipe
+        fields: [accent, density, sidebar_width, content_max_width, form_max_width, card_radius, compact_forms]
+    layout:
+    - type: form
+      title: Appearance
+      fields:
+      - { id: accent, type: colour, label: Accent, default_from: appearance.accent }
+      - { id: density, type: select, label: Density, options: [compact, comfortable], default_from: appearance.density }
+      - { id: sidebar, type: number, label: Sidebar width, default_from: appearance.sidebar_width }
+      - { id: content, type: number, label: Content max width, default_from: appearance.content_max_width }
+      - { id: form, type: number, label: Form max width, default_from: appearance.form_max_width }
+      - { id: radius, type: number, label: Card radius, default_from: appearance.card_radius }
+      - { id: compact, type: toggle, label: Compact forms, default_from: appearance.compact_forms }
+      actions:
+      - { label: Save Appearance, service: ui-config, action: set, args: [$field.accent, $field.density, $field.sidebar, $field.content, $field.form, $field.radius, $field.compact], style: primary, reload: true }
+    - type: notice
+      text: Navigation, page and login YAML remain validated through the safe UI configuration backend. Arbitrary JavaScript, shell commands and legacy LuCI components are forbidden.
