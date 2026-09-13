@@ -1,0 +1,30 @@
+#!/bin/sh
+set -eu
+ACTION="${1:-status}"
+status(){
+  RUN=0; EN=0
+  /etc/init.d/ttyd running >/dev/null 2>&1 && RUN=1 || true
+  /etc/init.d/ttyd enabled >/dev/null 2>&1 && EN=1 || true
+  PORT="$(uci -q get ttyd.@ttyd[0].port || echo 7681)"
+  SSL="$(uci -q get ttyd.@ttyd[0].ssl || echo 0)"
+  printf 'STATUS|%s|%s|%s|%s\n' "$RUN" "$EN" "$PORT" "$SSL"
+}
+case "$ACTION" in
+  status) status ;;
+  start)
+    [ -x /etc/init.d/mrouter-ttyd ] && /etc/init.d/mrouter-ttyd start >/dev/null 2>&1 || true
+    /etc/init.d/ttyd enable >/dev/null 2>&1 || true
+    /etc/init.d/ttyd restart >/dev/null 2>&1 || true
+    status
+    ;;
+  stop)
+    /etc/init.d/ttyd stop >/dev/null 2>&1 || true
+    status
+    ;;
+  restart)
+    [ -x /etc/init.d/mrouter-ttyd ] && /etc/init.d/mrouter-ttyd start >/dev/null 2>&1 || true
+    /etc/init.d/ttyd restart >/dev/null 2>&1 || true
+    status
+    ;;
+  *) echo 'ERROR|Unknown terminal action'; exit 2 ;;
+esac
