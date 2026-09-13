@@ -1,0 +1,79 @@
+version: 1
+services:
+  internet:
+    helper: /usr/libexec/mrouter-internet-info
+    mode: read
+  traffic:
+    helper: /usr/libexec/mrouter-traffic-live
+    mode: read
+  clients:
+    helper: /usr/libexec/mrouter-clients
+    mode: readwrite
+  client-action:
+    helper: /usr/libexec/mrouter-client-action
+    mode: write
+  wireless:
+    helper: /usr/libexec/mrouter-wireless
+    mode: readwrite
+  networks:
+    helper: /usr/libexec/mrouter-networks
+    mode: readwrite
+  events:
+    helper: /usr/libexec/mrouter-events
+    mode: readwrite
+  wan:
+    helper: /usr/libexec/mrouter-wan
+    mode: readwrite
+  dhcp:
+    helper: /usr/libexec/mrouter-dhcp
+    mode: readwrite
+  firewall:
+    helper: /usr/libexec/mrouter-firewall
+    mode: readwrite
+  support:
+    helper: /usr/libexec/mrouter-support
+    mode: readwrite
+  adguard:
+    helper: /usr/libexec/mrouter-adguard
+    mode: readwrite
+  tailscale:
+    helper: /usr/libexec/mrouter-tailscale
+    mode: readwrite
+  wireguard:
+    helper: /usr/libexec/mrouter-wireguard
+    mode: readwrite
+  wireguard-client:
+    helper: /usr/libexec/mrouter-wireguard-client
+    mode: readwrite
+  openvpn:
+    helper: /usr/libexec/mrouter-openvpn
+    mode: readwrite
+  policy:
+    helper: /usr/libexec/mrouter-policy
+    mode: readwrite
+  ddns:
+    helper: /usr/libexec/mrouter-ddns
+    mode: readwrite
+  ports:
+    helper: /usr/libexec/mrouter-ports
+    mode: readwrite
+  parental:
+    helper: /usr/libexec/mrouter-parental
+    mode: readwrite
+  content-filter:
+    helper: /usr/libexec/mrouter-content-filter
+    mode: readwrite
+  services:
+    helper: /usr/libexec/mrouter-services
+    mode: readwrite
+  advanced:
+    helper: /usr/libexec/mrouter-advanced
+    mode: readwrite
+  ui-config:
+    helper: /usr/libexec/mrouter-ui-config
+    mode: readwrite
+security:
+  arbitrary_helpers: false
+  arbitrary_shell: false
+  arguments_are_literal: true
+  helper_must_be_registered: true
