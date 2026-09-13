@@ -1,0 +1,46 @@
+#!/bin/sh
+set -eu
+ACTION="${1:-}"
+TARGET="${2:-}"
+case "$TARGET" in
+  openvpn)
+    FINAL=/tmp/mrouter-openvpn-upload
+    HELPER=/usr/libexec/mrouter-openvpn
+    ;;
+  wireguard-client)
+    FINAL=/tmp/mrouter-wireguard-client-upload
+    HELPER=/usr/libexec/mrouter-wireguard-client
+    ;;
+  *) echo 'ERROR|Unsupported upload target'; exit 2 ;;
+esac
+PART="/tmp/mrouter-native-upload-${TARGET}.part"
+case "$ACTION" in
+  start)
+    rm -f "$PART"
+    umask 077
+    : >"$PART"
+    echo 'OK|upload started'
+    ;;
+  chunk)
+    [ -f "$PART" ] || { echo 'ERROR|Upload not started'; exit 2; }
+    DATA="${3:-}"
+    [ -n "$DATA" ] || { echo 'ERROR|Empty upload chunk'; exit 2; }
+    printf '%s' "$DATA" | base64 -d >>"$PART" 2>/dev/null || { rm -f "$PART"; echo 'ERROR|Invalid upload data'; exit 2; }
+    SIZE="$(wc -c <"$PART" | tr -d ' ')"
+    [ "$SIZE" -le 67108864 ] || { rm -f "$PART"; echo 'ERROR|Upload exceeds 64 MiB limit'; exit 2; }
+    echo "OK|$SIZE"
+    ;;
+  finish)
+    NAME="${3:-upload.conf}"
+    [ -s "$PART" ] || { echo 'ERROR|No uploaded data'; exit 2; }
+    case "$NAME" in *'/'*|*'\\'*|'') rm -f "$PART"; echo 'ERROR|Invalid file name'; exit 2;; esac
+    mv "$PART" "$FINAL"
+    chmod 0600 "$FINAL"
+    exec "$HELPER" import "$NAME"
+    ;;
+  abort)
+    rm -f "$PART"
+    echo 'OK|upload cancelled'
+    ;;
+  *) echo 'ERROR|Unknown upload action'; exit 2 ;;
+esac
