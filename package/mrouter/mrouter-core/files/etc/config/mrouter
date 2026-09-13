@@ -1,8 +1,10 @@
 config system 'system'
-	option version '1.0.0'
-	option channel 'stable'
-	option schema '1202'
+	option version '1.1.0'
+	option channel 'development'
+	option schema '1300'
 	option initialized '0'
+	option setup_complete '0'
+	option setup_mode 'pending'
 
 config ports 'ports'
 	option wan_device ''
