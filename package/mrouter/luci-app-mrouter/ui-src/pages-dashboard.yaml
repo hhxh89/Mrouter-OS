@@ -1,0 +1,45 @@
+version: 1
+pages:
+  internet:
+    sources:
+      summary: { service: internet-summary, action: status, parser: json }
+      internet: { service: internet, action: refresh, parser: json }
+    layout:
+      - { type: topology, title: Network Topology, source: summary }
+      - type: json
+        title: Connection
+        source: summary
+        fields: [status, public_ip, wan_ip, lan_ip, gateway, dns, wan_interface, type, uptime, connection_duration]
+        labels:
+          status: Status
+          public_ip: Public IP
+          wan_ip: WAN IP
+          lan_ip: Router LAN IP
+          gateway: Gateway
+          dns: DNS
+          wan_interface: WAN interface
+          type: Connection type
+          uptime: Router uptime
+          connection_duration: Internet uptime
+      - type: json
+        title: WAN Quality
+        source: summary
+        fields: [latency, packet_loss, peak_latency, ipv6, nat_type, multiwan]
+        labels:
+          latency: Latency
+          packet_loss: Packet loss
+          peak_latency: Latest peak
+          ipv6: IPv6
+          nat_type: NAT / CGNAT
+          multiwan: Multi-WAN
+      - type: json
+        title: Traffic Counters
+        source: summary
+        fields: [wan_received, wan_sent, vpn_name, vpn_received, vpn_sent]
+        labels:
+          wan_received: Internet received
+          wan_sent: Internet sent
+          vpn_name: VPN interface
+          vpn_received: VPN received
+          vpn_sent: VPN sent
+      - { type: port-grid, title: Physical Ports, source: internet }
