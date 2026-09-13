@@ -3,15 +3,16 @@ schema:
   page_renderers:
     - yaml
   block_types:
-    - legacy
     - heading
     - notice
     - stats
     - card
+    - records
+    - json
+    - code
     - form
-    - table
-    - repeater
-    - component
+    - actions
+    - link
   field_types:
     - text
     - password
@@ -19,12 +20,14 @@ schema:
     - select
     - toggle
     - textarea
+    - yaml
     - colour
   safety:
     arbitrary_javascript: false
     arbitrary_shell: false
     html_from_yaml: false
     backend_actions_must_use_registry: true
+    legacy_views_allowed: false
     href_prefix: /cgi-bin/luci/
   runtime:
     defaults: /usr/share/mrouter/ui/defaults
