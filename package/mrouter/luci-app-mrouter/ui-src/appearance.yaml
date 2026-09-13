@@ -1,0 +1,12 @@
+version: 1
+appearance:
+  accent: "#007AFF"
+  density: compact
+  sidebar_width: 212
+  content_max_width: 1440
+  form_max_width: 360
+  card_radius: 14
+  section_gap: 18
+  compact_forms: true
+  animations: subtle
+  mobile_breakpoint: 850
