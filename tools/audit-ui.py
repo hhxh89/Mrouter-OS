@@ -21,7 +21,7 @@ def walk(obj,pid,ctx='block'):
   if typ:
    if ctx=='field':
     if typ not in allowed_fields: errors.append(f'{pid}: unsupported field type {typ}')
-   elif typ not in allowed_blocks:
+   elif ctx=='block' and typ not in allowed_blocks:
     errors.append(f'{pid}: unsupported block type {typ}')
   svc=obj.get('service')
   if svc and svc not in services: errors.append(f'{pid}: unregistered service {svc}')
@@ -29,14 +29,16 @@ def walk(obj,pid,ctx='block'):
   for k,v in obj.items():
    if k=='fields' and isinstance(v,list):
     for item in v: walk(item,pid,'field')
+   elif k in ('labels','options'):
+    continue
    else:
-    walk(v,pid,'block')
+    walk(v,pid,ctx)
  elif isinstance(obj,list):
   for v in obj: walk(v,pid,ctx)
 for pid,p in pages.items():
  if p.get('renderer')!='yaml': errors.append(f'{pid}: renderer is not yaml')
  if not p.get('layout'): errors.append(f'{pid}: empty layout')
- walk(p,pid)
+ walk(p,pid,'block')
 
 registered={}; helper_actions={}
 def action_dispatch(text):
@@ -53,7 +55,15 @@ for sid,s in services.items():
  if not hf.exists(): errors.append(f'{sid}: helper not packaged: {h}'); continue
  helper_actions[sid]=action_dispatch(hf.read_text(errors='ignore'))
 
-ALIASES={('tailscale','up'):('tailscale','bind'),('tailscale','down'):('tailscale','disable'),('adguard','start'):('adguard','enable'),('adguard','stop'):('adguard','disable'),('adguard','restart'):('adguard','enable'),('openvpn','disconnect'):('openvpn','connect')}
+ALIASES={
+ ('tailscale','up'):('tailscale','bind'),
+ ('tailscale','down'):('tailscale','disable'),
+ ('adguard','start'):('adguard','enable'),
+ ('adguard','stop'):('adguard','disable'),
+ ('adguard','restart'):('adguard','enable'),
+ ('openvpn','disconnect'):('openvpn','connect'),
+ ('policy','reconcile'):('policy','status'),
+}
 for svc,act in sorted(yaml_pairs):
  if f'{svc}:{act}' not in BRIDGE: errors.append(f'YAML action not allowed by bridge: {svc}:{act}')
  hs,ha=ALIASES.get((svc,act),(svc,act)); accepted=helper_actions.get(hs)
