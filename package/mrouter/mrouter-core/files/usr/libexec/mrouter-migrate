@@ -1,21 +1,36 @@
 #!/bin/sh
 set -eu
 TARGET_SCHEMA=1300
+
+ensure_cfg(){
+  F="/etc/config/$1"
+  [ -e "$F" ] || : > "$F"
+}
+
+for C in mrouter mrouterparental mrouterfilter mrouterservices mrouterevents mrouterclients mrouterwan; do
+  ensure_cfg "$C"
+done
+
 uci -q get mrouter.system >/dev/null 2>&1 || uci set mrouter.system='system'
+uci -q get mrouter.ports >/dev/null 2>&1 || uci set mrouter.ports='ports'
+[ -n "$(uci -q get mrouter.system.setup_complete || true)" ] || uci set mrouter.system.setup_complete='0'
+[ -n "$(uci -q get mrouter.system.setup_mode || true)" ] || uci set mrouter.system.setup_mode='pending'
+[ -n "$(uci -q get mrouter.ports.pending_reboot || true)" ] || uci set mrouter.ports.pending_reboot='0'
+
 CURRENT="$(uci -q get mrouter.system.schema || echo 0)"; case "$CURRENT" in ''|*[!0-9]*) CURRENT=0;; esac
 [ "$CURRENT" -le "$TARGET_SCHEMA" ] || { echo "Mrouter config schema $CURRENT is newer than package schema $TARGET_SCHEMA" >&2; exit 1; }
 [ "$CURRENT" -ge 1200 ] || CURRENT=1200
 if [ "$CURRENT" -lt 1201 ]; then
-  uci -q get mrouterparental.config >/dev/null 2>&1 || uci set mrouterparental.config='parental'; [ -n "$(uci -q get mrouterparental.config.enabled)" ] || uci set mrouterparental.config.enabled='0'
-  uci -q get mrouterfilter.config >/dev/null 2>&1 || uci set mrouterfilter.config='filter'; [ -n "$(uci -q get mrouterfilter.config.enabled)" ] || uci set mrouterfilter.config.enabled='0'; [ -n "$(uci -q get mrouterfilter.config.force_dns)" ] || uci set mrouterfilter.config.force_dns='0'; [ -n "$(uci -q get mrouterfilter.config.block_dot)" ] || uci set mrouterfilter.config.block_dot='0'; uci commit mrouterparental; uci commit mrouterfilter; CURRENT=1201
+  uci -q get mrouterparental.config >/dev/null 2>&1 || uci set mrouterparental.config='parental'; [ -n "$(uci -q get mrouterparental.config.enabled || true)" ] || uci set mrouterparental.config.enabled='0'
+  uci -q get mrouterfilter.config >/dev/null 2>&1 || uci set mrouterfilter.config='filter'; [ -n "$(uci -q get mrouterfilter.config.enabled || true)" ] || uci set mrouterfilter.config.enabled='0'; [ -n "$(uci -q get mrouterfilter.config.force_dns || true)" ] || uci set mrouterfilter.config.force_dns='0'; [ -n "$(uci -q get mrouterfilter.config.block_dot || true)" ] || uci set mrouterfilter.config.block_dot='0'; uci commit mrouterparental; uci commit mrouterfilter; CURRENT=1201
 fi
 if [ "$CURRENT" -lt 1202 ]; then
-  uci -q get mrouterservices.main >/dev/null 2>&1 || uci set mrouterservices.main='general'; [ -n "$(uci -q get mrouterservices.main.dns_mode)" ] || uci set mrouterservices.main.dns_mode='mrouter'; [ -n "$(uci -q get mrouterservices.main.pihole_port)" ] || uci set mrouterservices.main.pihole_port='53'; uci commit mrouterservices; CURRENT=1202
+  uci -q get mrouterservices.main >/dev/null 2>&1 || uci set mrouterservices.main='general'; [ -n "$(uci -q get mrouterservices.main.dns_mode || true)" ] || uci set mrouterservices.main.dns_mode='mrouter'; [ -n "$(uci -q get mrouterservices.main.pihole_port || true)" ] || uci set mrouterservices.main.pihole_port='53'; uci commit mrouterservices; CURRENT=1202
 fi
 if [ "$CURRENT" -lt 1300 ]; then
-  uci -q get mrouterevents.main >/dev/null 2>&1 || uci set mrouterevents.main='settings'; [ -n "$(uci -q get mrouterevents.main.enabled)" ] || uci set mrouterevents.main.enabled='1'; [ -n "$(uci -q get mrouterevents.main.new_device)" ] || uci set mrouterevents.main.new_device='1'; [ -n "$(uci -q get mrouterevents.main.wan)" ] || uci set mrouterevents.main.wan='1'; [ -n "$(uci -q get mrouterevents.main.vpn)" ] || uci set mrouterevents.main.vpn='1'
-  uci -q get mrouterclients.main >/dev/null 2>&1 || uci set mrouterclients.main='settings'; [ -n "$(uci -q get mrouterclients.main.quarantine_new)" ] || uci set mrouterclients.main.quarantine_new='0'
-  uci -q get mrouterwan.main >/dev/null 2>&1 || uci set mrouterwan.main='settings'; [ -n "$(uci -q get mrouterwan.main.enabled)" ] || uci set mrouterwan.main.enabled='0'; [ -n "$(uci -q get mrouterwan.main.primary)" ] || uci set mrouterwan.main.primary='wan'; [ -n "$(uci -q get mrouterwan.main.mode)" ] || uci set mrouterwan.main.mode='failover'
+  uci -q get mrouterevents.main >/dev/null 2>&1 || uci set mrouterevents.main='settings'; [ -n "$(uci -q get mrouterevents.main.enabled || true)" ] || uci set mrouterevents.main.enabled='1'; [ -n "$(uci -q get mrouterevents.main.new_device || true)" ] || uci set mrouterevents.main.new_device='1'; [ -n "$(uci -q get mrouterevents.main.wan || true)" ] || uci set mrouterevents.main.wan='1'; [ -n "$(uci -q get mrouterevents.main.vpn || true)" ] || uci set mrouterevents.main.vpn='1'
+  uci -q get mrouterclients.main >/dev/null 2>&1 || uci set mrouterclients.main='settings'; [ -n "$(uci -q get mrouterclients.main.quarantine_new || true)" ] || uci set mrouterclients.main.quarantine_new='0'
+  uci -q get mrouterwan.main >/dev/null 2>&1 || uci set mrouterwan.main='settings'; [ -n "$(uci -q get mrouterwan.main.enabled || true)" ] || uci set mrouterwan.main.enabled='0'; [ -n "$(uci -q get mrouterwan.main.primary || true)" ] || uci set mrouterwan.main.primary='wan'; [ -n "$(uci -q get mrouterwan.main.mode || true)" ] || uci set mrouterwan.main.mode='failover'
   uci commit mrouterevents; uci commit mrouterclients; uci commit mrouterwan; CURRENT=1300
 fi
 VERSION="$(sed -n 's/^MROUTER_VERSION="\(.*\)"/\1/p' /etc/mrouter-release 2>/dev/null || true)"; CHANNEL="$(sed -n 's/^MROUTER_CHANNEL="\(.*\)"/\1/p' /etc/mrouter-release 2>/dev/null || true)"; [ -n "$VERSION" ] || VERSION=1.1.0; [ -n "$CHANNEL" ] || CHANNEL=development
