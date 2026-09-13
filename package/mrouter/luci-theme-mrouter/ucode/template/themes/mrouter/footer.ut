@@ -5,9 +5,10 @@
 </div>
 </div>
 {% if (ctx.authsession): %}
-<link rel="stylesheet" href="/luci-static/mrouter-ui/mrouter-shell.css?v=1.1.0-ui4">
-<script src="/luci-static/mrouter-ui/yaml-lite.js?v=1.1.0-ui4"></script>
-<script src="/luci-static/mrouter-ui/mrouter-shell.js?v=1.1.0-ui4"></script>
+<link rel="stylesheet" href="/luci-static/mrouter-ui/mrouter-shell.css?v=1.1.0-ui5">
+<script src="/luci-static/mrouter-ui/yaml-lite.js?v=1.1.0-ui5"></script>
+<script src="/luci-static/mrouter-ui/schema-runtime.js?v=1.1.0-ui5"></script>
+<script src="/luci-static/mrouter-ui/mrouter-shell.js?v=1.1.0-ui5"></script>
 {% endif %}
 </body>
 </html>
