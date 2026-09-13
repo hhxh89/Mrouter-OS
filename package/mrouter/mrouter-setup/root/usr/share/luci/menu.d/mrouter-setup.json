@@ -3,6 +3,9 @@
     "title": "Setup",
     "order": 0,
     "action": { "type": "view", "path": "mrouter/setup" },
-    "depends": { "acl": [ "mrouter-setup" ] }
+    "depends": {
+      "acl": [ "mrouter-setup" ],
+      "uci": { "mrouter": { "system": { "setup_complete": "0" } } }
+    }
   }
 }
