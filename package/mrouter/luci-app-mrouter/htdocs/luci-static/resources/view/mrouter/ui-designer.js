@@ -4,46 +4,36 @@
 'require ui';
 
 var HELPER='/usr/libexec/mrouter-ui-config';
-
-function run(args){return fs.exec(HELPER,args||[]).then(function(r){if(r.code)throw new Error((r.stderr||r.stdout||'UI configuration failed').trim());return (r.stdout||'').trim();});}
+function run(args){return fs.exec(HELPER,args||[]).then(function(r){if(r.code)throw new Error((r.stderr||r.stdout||'UI configuration failed').trim());return(r.stdout||'').trim();});}
 function parseStatus(s){var p=(s||'').split('|');return{accent:p[1]||'#007AFF',density:p[2]||'compact',sidebar:p[3]||'212',content:p[4]||'1440',form:p[5]||'360',radius:p[6]||'14',compact:(p[7]||'1')==='1'};}
-function yamlOf(v){return 'appearance:\n  accent: "'+v.accent+'"\n  density: '+v.density+'\n  sidebar_width: '+v.sidebar+'\n  content_max_width: '+v.content+'\n  form_max_width: '+v.form+'\n  card_radius: '+v.radius+'\n  compact_forms: '+(v.compact?'true':'false')+'\n';}
-function parseYaml(text){var o={};String(text||'').split(/\r?\n/).forEach(function(line){var m=line.match(/^\s{2}([a-z_]+):\s*(.*?)\s*$/);if(!m)return;var v=m[2].replace(/^['"]|['"]$/g,'');o[m[1]]=v;});return{accent:o.accent||'#007AFF',density:o.density||'compact',sidebar:o.sidebar_width||'212',content:o.content_max_width||'1440',form:o.form_max_width||'360',radius:o.card_radius||'14',compact:String(o.compact_forms||'true').toLowerCase()!=='false'};}
 function field(label,input){return E('label',{'class':'mr-designer-field'},[E('span',{},label),input]);}
+function y(){if(!window.MrouterYaml)throw new Error('YAML runtime is not loaded');return window.MrouterYaml;}
+function appearanceYaml(v){return y().stringify({version:1,appearance:{accent:v.accent,density:v.density,sidebar_width:Number(v.sidebar),content_max_width:Number(v.content),form_max_width:Number(v.form),card_radius:Number(v.radius),compact_forms:!!v.compact}});}
+function applyDoc(kind,text){var obj=y().parse(text);if(!obj||obj.version!==1)throw new Error('version: 1 is required');return Promise.all([fs.write('/tmp/mrouter-ui-'+kind+'.yaml',text),fs.write('/tmp/mrouter-ui-'+kind+'.json',JSON.stringify(obj,null,2)+'\n')]).then(function(){return run(['apply',kind]);});}
+function editor(text,rows){return E('textarea',{'class':'mr-yaml-editor','rows':rows||22,'spellcheck':'false'},text);}
+function button(label,cls,fn){var b=E('button',{'class':'btn cbi-button '+(cls||''),'type':'button'},label);b.onclick=function(){b.disabled=true;Promise.resolve().then(fn).catch(function(e){ui.addNotification(null,E('p',{},e.message),'error');}).finally(function(){b.disabled=false;});};return b;}
+function tabs(){var names=['Appearance','Pages','Navigation','Login','Advanced YAML'],bar=E('div',{'class':'mr-designer-tabs'}),panels=[];names.forEach(function(n,i){var b=E('button',{'type':'button','class':'mr-designer-tab'+(i===0?' is-active':'')},n);b.onclick=function(){Array.prototype.forEach.call(bar.children,function(x){x.classList.remove('is-active');});b.classList.add('is-active');panels.forEach(function(p,j){p.style.display=j===i?'block':'none';});};bar.appendChild(b);});return{bar:bar,panels:panels};}
 
 return view.extend({
- load:function(){return run(['status']).then(parseStatus);},
- render:function(v){
-   var accent=E('input',{type:'color',value:v.accent});
-   var density=E('select',{},[E('option',{value:'compact'},'Compact'),E('option',{value:'comfortable'},'Comfortable')]);density.value=v.density;
-   var sidebar=E('input',{type:'number',min:'180',max:'320',value:v.sidebar});
-   var content=E('input',{type:'number',min:'900',max:'2200',value:v.content});
-   var form=E('input',{type:'number',min:'220',max:'640',value:v.form});
-   var radius=E('input',{type:'number',min:'0',max:'28',value:v.radius});
-   var compact=E('input',{type:'checkbox'});compact.checked=v.compact;
-   var yaml=E('textarea',{'class':'mr-yaml-editor',rows:'12',spellcheck:'false'},yamlOf(v));
-   var msg=E('div',{'class':'m-info-banner'},'Changes are stored in /etc/mrouter/ui.d/appearance.yaml and survive package upgrades.');
+ load:function(){return Promise.all([run(['status']).then(parseStatus),run(['export','pages']),run(['export','navigation']),run(['export','login'])]).then(function(a){return{appearance:a[0],pages:a[1],navigation:a[2],login:a[3]};});},
+ render:function(data){
+   var t=tabs(),v=data.appearance;
+   var accent=E('input',{type:'color',value:v.accent}),density=E('select',{},[E('option',{value:'compact'},'Compact'),E('option',{value:'comfortable'},'Comfortable')]);density.value=v.density;
+   var sidebar=E('input',{type:'number',min:'180',max:'320',value:v.sidebar}),content=E('input',{type:'number',min:'900',max:'2200',value:v.content}),form=E('input',{type:'number',min:'220',max:'640',value:v.form}),radius=E('input',{type:'number',min:'0',max:'28',value:v.radius}),compact=E('input',{type:'checkbox'});compact.checked=v.compact;
+   var ay=editor(appearanceYaml(v),14);function vals(){return{accent:accent.value,density:density.value,sidebar:sidebar.value,content:content.value,form:form.value,radius:radius.value,compact:compact.checked};}function sync(){ay.value=appearanceYaml(vals());}[accent,density,sidebar,content,form,radius,compact].forEach(function(x){x.addEventListener('change',sync);});
+   var ap=E('div',{'class':'mr-designer-panel'},[E('div',{'class':'m-section'},[E('h3',{},'Appearance'),E('div',{'class':'mr-designer-grid'},[field('Accent colour',accent),field('Density',density),field('Sidebar width',sidebar),field('Content width',content),field('Form control width',form),field('Card radius',radius),field('Compact forms',compact)]),E('div',{'class':'cbi-page-actions'},[
+      button('Reset defaults','cbi-button-reset',function(){return run(['reset']).then(function(){location.reload();});}),button('Apply','cbi-button-apply',function(){var x=vals();return run(['set',x.accent,x.density,x.sidebar,x.content,x.form,x.radius,x.compact?'1':'0']).then(function(){location.reload();});})
+   ])]),E('div',{'class':'m-section'},[E('h3',{},'Appearance YAML'),ay])]);
 
-   function values(){return{accent:accent.value,density:density.value,sidebar:sidebar.value,content:content.value,form:form.value,radius:radius.value,compact:compact.checked};}
-   function syncYaml(){yaml.value=yamlOf(values());}
-   [accent,density,sidebar,content,form,radius,compact].forEach(function(x){x.addEventListener('change',syncYaml);});
+   var py=editor(data.pages,32),pageObj;try{pageObj=y().parse(data.pages);}catch(e){pageObj={version:1,pages:{}};}var ids=Object.keys(pageObj.pages||{}),sel=E('select',{'class':'m-ios-input'},ids.map(function(id){return E('option',{value:id},(pageObj.pages[id].title||id)+' ('+id+')');})),pt=E('input',{'class':'m-ios-input'}),ps=E('input',{'class':'m-ios-input'}),pv=E('input',{type:'checkbox'});function loadPageFields(){var p=pageObj.pages[sel.value]||{};pt.value=p.title||'';ps.value=p.subtitle||'';pv.checked=p.visible!==false;}function savePageFields(){var p=pageObj.pages[sel.value]||{};p.title=pt.value;p.subtitle=ps.value;p.visible=pv.checked;pageObj.pages[sel.value]=p;py.value=y().stringify(pageObj);}sel.onchange=loadPageFields;[pt,ps,pv].forEach(function(x){x.onchange=savePageFields;});loadPageFields();
+   var pp=E('div',{'class':'mr-designer-panel','style':'display:none'},[E('div',{'class':'m-section'},[E('h3',{},'Page editor'),E('div',{'class':'mr-designer-grid'},[field('Page',sel),field('Title',pt),field('Subtitle',ps),field('Visible',pv)]),E('div',{'class':'m-info-banner'},'The full page layout is below. Keep a legacy block for the current tested page, or replace it with safe YAML blocks such as notice, stats, card and form.'),py,E('div',{'class':'cbi-page-actions'},[button('Reset pages','cbi-button-reset',function(){return run(['reset','pages']).then(function(){location.reload();});}),button('Apply pages YAML','cbi-button-apply',function(){return applyDoc('pages',py.value).then(function(){location.reload();});})])])]);
 
-   var save=E('button',{'class':'btn cbi-button cbi-button-apply','type':'button'},'Apply');
-   save.onclick=function(){var x=values();save.disabled=true;run(['set',x.accent,x.density,x.sidebar,x.content,x.form,x.radius,x.compact?'1':'0']).then(function(){ui.addNotification(null,E('p',{},'UI settings saved. Reloading…'),'info');setTimeout(function(){location.reload();},300);}).catch(function(e){ui.addNotification(null,E('p',{},e.message),'error');save.disabled=false;});};
+   var ny=editor(data.navigation,30),np=E('div',{'class':'mr-designer-panel','style':'display:none'},[E('div',{'class':'m-section'},[E('h3',{},'Navigation YAML'),E('div',{'class':'m-info-banner'},'Reorder, rename or hide menu entries. Navigation links are restricted to /cgi-bin/luci/ for safety.'),ny,E('div',{'class':'cbi-page-actions'},[button('Reset navigation','cbi-button-reset',function(){return run(['reset','navigation']).then(function(){location.reload();});}),button('Apply navigation YAML','cbi-button-apply',function(){return applyDoc('navigation',ny.value).then(function(){location.reload();});})])])]);
 
-   var applyYaml=E('button',{'class':'btn cbi-button','type':'button'},'Apply YAML');
-   applyYaml.onclick=function(){try{var x=parseYaml(yaml.value);accent.value=x.accent;density.value=x.density;sidebar.value=x.sidebar;content.value=x.content;form.value=x.form;radius.value=x.radius;compact.checked=x.compact;save.click();}catch(e){ui.addNotification(null,E('p',{},'Invalid YAML: '+e.message),'error');}};
+   var ly=editor(data.login,20),lp=E('div',{'class':'mr-designer-panel','style':'display:none'},[E('div',{'class':'m-section'},[E('h3',{},'Login YAML'),E('div',{'class':'m-info-banner'},'Login text and presentation are configurable. Authentication still uses LuCI/OpenWrt sessions.'),ly,E('div',{'class':'cbi-page-actions'},[button('Reset login','cbi-button-reset',function(){return run(['reset','login']).then(function(){location.reload();});}),button('Apply login YAML','cbi-button-apply',function(){return applyDoc('login',ly.value).then(function(){location.reload();});})])])]);
 
-   var reset=E('button',{'class':'btn cbi-button cbi-button-reset','type':'button'},'Reset defaults');
-   reset.onclick=function(){reset.disabled=true;run(['reset']).then(function(){location.reload();}).catch(function(e){ui.addNotification(null,E('p',{},e.message),'error');reset.disabled=false;});};
-
-   return E('div',{'class':'mrouter-page mr-ui-designer'},[
-     E('div',{'class':'m-page-title'},[E('div',{},[E('h2',{},'Mrouter UI Designer'),E('div',{'class':'m-subtitle'},'Fast local interface customisation backed by YAML')])]),
-     E('div',{'class':'m-section'},[E('h3',{},'Appearance'),E('div',{'class':'mr-designer-grid'},[
-       field('Accent colour',accent),field('Density',density),field('Sidebar width',sidebar),field('Content width',content),field('Form control width',form),field('Card radius',radius),field('Compact forms',compact)
-     ]),E('div',{'class':'cbi-page-actions'},[save,reset])]),
-     E('div',{'class':'m-section'},[E('h3',{},'YAML mode'),msg,yaml,E('div',{'class':'cbi-page-actions'},[applyYaml])])
-   ]);
- },
- handleSaveApply:null,handleSave:null,handleReset:null
+   var adv=E('div',{'class':'mr-designer-panel','style':'display:none'},[E('div',{'class':'m-section'},[E('h3',{},'Advanced YAML'),E('p',{},'Mrouter treats YAML as declarative UI data only. YAML cannot contain JavaScript or shell commands. Backend writes go through the registered Mrouter action bridge.'),E('div',{'class':'m-info-banner'},'Defaults: /usr/share/mrouter/ui/defaults · Overrides: /etc/mrouter/ui.d · Runtime JSON: /www/luci-static/mrouter-ui')])]);
+   t.panels.push(ap,pp,np,lp,adv);
+   return E('div',{'class':'mrouter-page mr-ui-designer'},[E('div',{'class':'m-page-title'},[E('div',{},[E('h2',{},'Mrouter UI Designer'),E('div',{'class':'m-subtitle'},'Edit appearance, every page, navigation and login from YAML')])]),t.bar,ap,pp,np,lp,adv]);
+ },handleSaveApply:null,handleSave:null,handleReset:null
 });
