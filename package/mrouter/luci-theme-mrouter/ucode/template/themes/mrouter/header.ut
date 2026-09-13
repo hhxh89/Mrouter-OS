@@ -8,32 +8,33 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" href="{{ media }}/cascade.css?v=1.1.0-ui5">
+<link rel="stylesheet" href="{{ media }}/cascade.css?v=1.1.0-ui6">
 <link rel="icon" href="{{ media }}/logo.svg" sizes="any">
 {% if (node?.css): %}<link rel="stylesheet" href="{{ resource }}/{{ node.css }}">{% endif %}
 <script src="{{ dispatcher.build_url('admin/translations', dispatcher.lang) }}"></script>
 <script src="{{ resource }}/cbi.js?v=26.180.75667~128a781"></script>
 {% if (ctx.authsession): %}
-<script src="/luci-static/mrouter-ui/yaml-lite.js?v=1.1.0-ui5"></script>
-<script src="/luci-static/mrouter-ui/schema-runtime.js?v=1.1.0-ui5"></script>
+<script src="/luci-static/mrouter-ui/yaml-lite.js?v=1.1.0-ui6"></script>
+<script src="/luci-static/mrouter-ui/schema-runtime.js?v=1.1.0-ui6"></script>
 {% endif %}
 <title>{{ striptags(`${boardinfo.hostname ?? '?'}${dispatched?.title ? ` | ${_(dispatched.title)}` : ''}`) }}</title>
 {% if (css): %}<style title="text/css">{{ css }}</style>{% endif %}
 </head>
 <body class="lang_{{ dispatcher.lang }} {{ ctx.authsession ? 'logged-in' : '' }} {{ length(ctx.path) ? `node-${join('-', ctx.path)}` : 'node-main-login' }}" data-page="{{ entityencode(join('-', ctx.path), true) }}">
-<header>
+<header class="mr-header">
 	<div class="fill">
 		<div class="container">
-			<span class="showSide"></span>
+			<button id="mrouter-menu-toggle" class="mr-menu-toggle" type="button" aria-label="Open navigation" aria-expanded="false"><span></span><span></span><span></span></button>
 			<a id="logo" href="{{ ctx.authsession ? dispatcher.build_url('admin/dashboard') : '#' }}" aria-label="Mrouter-OS"><svg class="mrouter-header-logo" viewBox="0 0 64 64" aria-hidden="true"><rect x="3" y="3" width="58" height="58" rx="16" fill="#007AFF"/><path d="M16 44V20L32 35L48 20V44" fill="none" stroke="#fff" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
 			<a class="brand" href="{{ ctx.authsession ? dispatcher.build_url('admin/dashboard') : '#' }}">Mrouter-OS</a>
 			<span class="status" id="indicators"></span>
 		</div>
 	</div>
 </header>
-<div class="main">
-	<div class="main-left" id="mainmenu" style="display:none"></div>
-	<div class="main-right">
+<div class="main mr-app-shell">
+	<aside class="main-left mr-sidebar-host" id="mrouter-sidebar" aria-label="Mrouter navigation"></aside>
+	<div id="mrouter-mobile-backdrop" class="mr-mobile-backdrop" hidden></div>
+	<div class="main-right mr-content-host">
 		<div class="modemenu-buttons" style="display:none"><ul id="modemenu"></ul></div>
 		<div id="maincontent">
 			<div class="container">
