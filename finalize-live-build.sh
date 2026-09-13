@@ -59,6 +59,7 @@ EOF
 cat > "$THEME/cascade.css" <<'EOF'
 @import url('/luci-static/material/cascade.css');
 @import url('/luci-static/mrouter/custom.css');
+@import url('/luci-static/mrouter/layout-fixes.css');
 @import url('/luci-static/mrouter/login-flat.css');
 EOF
 
@@ -102,6 +103,7 @@ grep -q "Austria" "$VIEW/policy.js"
 grep -q "mrouter-openvpn" "$VIEW/openvpn.js"
 grep -q "mrouter-tailscale" "$VIEW/tailscale.js"
 grep -q "mrouter-login-map" "$THEME/login-flat.css"
+grep -q "layout-fixes.css" "$THEME/cascade.css"
 echo "LIVE PARITY CORE FEATURES: OK"
 
 chmod +x validate-source.sh build-packages.sh install-into-openwrt.sh
