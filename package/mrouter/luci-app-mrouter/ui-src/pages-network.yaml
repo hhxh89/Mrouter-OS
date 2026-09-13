@@ -1,0 +1,164 @@
+version: 1
+pages:
+  ports:
+    sources:
+      status: { service: ports, action: status, parser: pipe }
+    layout:
+    - { type: records, title: Ethernet Ports, source: status, tags: [PORT], columns: [Device, Role, Link, Speed, Driver, MAC] }
+    - { type: records, title: Current Assignment, source: status, tags: [STATUS], columns: [Initialized, Pending reboot, NIC count, WAN, LAN, LAN IP, LAN subnet, IoT configured, IoT subnet] }
+    - type: form
+      title: Assign WAN / LAN Ports
+      fields:
+      - id: wan
+        type: select
+        label: WAN port
+        options_from: { source: status, tags: [PORT], value_index: 0, label_index: 0 }
+      - id: lan
+        type: select
+        label: LAN port
+        options_from: { source: status, tags: [PORT], value_index: 0, label_index: 0 }
+      actions:
+      - { label: Save Port Assignment, service: ports, action: set, args: [$field.wan, $field.lan], style: danger, confirm: 'Changing WAN/LAN ports can interrupt access. Apply this port assignment?', reload: true }
+    - type: actions
+      title: Port Tools
+      items:
+      - { label: Swap WAN / LAN, service: ports, action: swap, style: danger, confirm: 'Swap WAN and LAN ports? This can interrupt access.', reload: true }
+      - { label: Clear Pending Reboot, service: ports, action: clear-pending, style: secondary, reload: true }
+  networks:
+    sources:
+      status: { service: networks, action: status, parser: pipe }
+    layout:
+    - type: records
+      title: Configured Networks
+      source: status
+      tags: [NET]
+      columns: [Name, Protocol, Device, IP, Netmask, Up, Firewall zone, Mrouter managed]
+      row_actions:
+      - { label: Delete, service: networks, action: delete, args: [$row.0], style: danger, confirm: 'Delete this network? Only Mrouter-created networks are allowed.', reload: true }
+    - type: form
+      title: Create Network
+      fields:
+      - { id: id, type: text, label: Network name, placeholder: guest }
+      - { id: type, type: select, label: Type, options: [guest, iot, lan, custom] }
+      - { id: cidr, type: text, label: Router address / prefix, placeholder: 192.168.30.1/24 }
+      - { id: vlan, type: number, label: VLAN ID, default: 0, min: 0, max: 4094 }
+      - { id: parent, type: text, label: Parent device }
+      - { id: dhcp, type: toggle, label: DHCP server, default: true }
+      - { id: internet, type: toggle, label: Internet access, default: true }
+      actions:
+      - { label: Create Network, service: networks, action: create, args: [$field.id, $field.type, $field.cidr, $field.vlan, $field.parent, $field.dhcp, $field.internet], style: primary, reload: true }
+    - type: actions
+      title: Network Backup
+      items:
+      - { label: Create Network Backup, service: networks, action: backup, output: true, style: secondary }
+  firewall:
+    sources:
+      status:
+        service: firewall
+        action: status
+        parser: pipe
+        fields: [upnp_running, upnp_installed]
+    layout:
+    - type: stats
+      items:
+      - { label: UPnP running, value_from: status.upnp_running }
+      - { label: UPnP installed, value_from: status.upnp_installed }
+    - type: records
+      title: Port Forwards
+      source: status
+      tags: [FORWARD]
+      columns: [ID, Name, Source, External port, Destination zone, Destination IP, Internal port, Protocol]
+      row_actions:
+      - { label: Delete, service: firewall, action: delete-forward, args: [$row.0], style: danger, confirm: 'Delete this port forward?', reload: true }
+    - { type: records, title: Active UPnP Leases, source: status, tags: [UPNP], columns: [Lease] }
+    - type: form
+      title: Add Port Forward
+      fields:
+      - { id: name, type: text, label: Name, default: Port forward }
+      - { id: external, type: number, label: External port }
+      - { id: ip, type: text, label: Destination IP }
+      - { id: internal, type: number, label: Internal port }
+      - id: proto
+        type: select
+        label: Protocol
+        options: [tcp, udp, { value: 'tcp udp', label: TCP + UDP }]
+      actions:
+      - { label: Add Port Forward, service: firewall, action: add-forward, args: [$field.name, $field.external, $field.ip, $field.internal, $field.proto], style: primary, reload: true }
+    - type: form
+      title: UPnP
+      fields:
+      - { id: enabled, type: toggle, label: Enable UPnP, default_from: status.upnp_running }
+      actions:
+      - { label: Apply UPnP, service: firewall, action: upnp, args: [$field.enabled], style: primary, reload: true }
+  routing:
+    sources:
+      snapshot: { service: advanced, action: snapshot, parser: pipe }
+    layout:
+    - { type: records, title: Default Route, source: snapshot, tags: [DEFAULT], columns: [Device, Gateway, Source] }
+    - type: records
+      title: Static Routes
+      source: snapshot
+      tags: [ROUTE]
+      columns: [ID, Interface, Target, Netmask, Gateway]
+      row_actions:
+      - { label: Delete, service: advanced, action: route-delete, args: [$row.0], style: danger, confirm: 'Delete this route? Only Mrouter-created routes can be deleted here.', reload: true }
+    - type: form
+      title: Add Static Route
+      fields:
+      - { id: interface, type: text, label: Interface, default: wan }
+      - { id: target, type: text, label: Target, placeholder: 10.20.0.0/16 }
+      - { id: netmask, type: text, label: Netmask, help: Optional when target includes /prefix. }
+      - { id: gateway, type: text, label: Gateway }
+      - { id: metric, type: number, label: Metric }
+      actions:
+      - { label: Add Route, service: advanced, action: route-add, args: [$field.interface, $field.target, $field.netmask, $field.gateway, $field.metric], style: primary, reload: true }
+  multiwan:
+    sources:
+      status:
+        service: wan
+        action: status
+        parser: pipe
+        fields: [enabled, primary, secondary, mode]
+    layout:
+    - type: stats
+      items:
+      - { label: Enabled, value_from: status.enabled }
+      - { label: Primary, value_from: status.primary }
+      - { label: Secondary, value_from: status.secondary }
+      - { label: Mode, value_from: status.mode }
+    - { type: records, title: WAN Interfaces, source: status, tags: [WAN], columns: [Interface, Up, Protocol, Device, IP, Gateway, Metric] }
+    - { type: records, title: IPv6, source: status, tags: [IPV6], columns: [Interface, Address, Gateway] }
+    - { type: records, title: NAT / CGNAT, source: status, tags: [NAT], columns: [WAN IPv4, Public IPv4, CGNAT] }
+    - { type: records, title: Quality History, source: status, tags: [QUALITY], columns: [Epoch, Interface, Loss %, Average ms, Max ms] }
+    - type: form
+      title: Configure Multi-WAN
+      fields:
+      - id: primary
+        type: select
+        label: Primary
+        options_from: { source: status, tags: [WAN], value_index: 0, label_index: 0 }
+      - id: secondary
+        type: select
+        label: Secondary
+        options_from: { source: status, tags: [WAN], value_index: 0, label_index: 0 }
+      - { id: mode, type: select, label: Mode, options: [failover, balance] }
+      actions:
+      - { label: Enable / Save Multi-WAN, service: wan, action: save, args: [$field.primary, $field.secondary, $field.mode], style: primary, reload: true }
+    - type: actions
+      title: Multi-WAN Tools
+      items:
+      - { label: Disable Multi-WAN, service: wan, action: disable, style: danger, confirm: 'Disable Mrouter Multi-WAN policy?', reload: true }
+      - { label: Sample WAN Quality, service: wan, action: sample, style: secondary, reload: true }
+  diagnostics:
+    sources:
+      selftest: { service: advanced, action: diagnostics, args: [selftest], parser: pipe }
+    layout:
+    - { type: records, title: Router Self-Test, source: selftest }
+    - type: form
+      title: Run Diagnostic
+      fields:
+      - { id: type, type: select, label: Test, options: [ping, ping6, trace, dns, port] }
+      - { id: target, type: text, label: Target }
+      - { id: extra, type: text, label: Extra / port / DNS server }
+      actions:
+      - { label: Run, service: advanced, action: diagnostics, args: [$field.type, $field.target, $field.extra], style: primary, output: true }
