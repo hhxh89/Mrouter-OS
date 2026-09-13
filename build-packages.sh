@@ -7,6 +7,7 @@ OUT="${OUT:-$HOME/mrouter-packages}"
 VERSION="$(cat "$HERE/VERSION" 2>/dev/null | tr -d '\r\n')"
 [ -n "$VERSION" ] || { echo 'VERSION file is empty' >&2; exit 1; }
 [ -d "$SRC" ] || { echo "OpenWrt source not found: $SRC" >&2; exit 1; }
+python3 "$HERE/tools/compile-ui.py"
 "$HERE/validate-source.sh"
 "$HERE/install-into-openwrt.sh" "$SRC"
 cd "$SRC"
