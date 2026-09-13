@@ -8,22 +8,31 @@ except Exception:
 ROOT=Path(__file__).resolve().parents[1]
 APP=ROOT/'package/mrouter/luci-app-mrouter'; CORE=ROOT/'package/mrouter/mrouter-core/files/usr/libexec'
 PAGES=yaml.safe_load((APP/'ui-src/pages.yaml').read_text()); ACTIONS=yaml.safe_load((APP/'ui-src/actions.yaml').read_text()); SCHEMA=yaml.safe_load((APP/'ui-src/schema.yaml').read_text()); ACL=json.loads((APP/'root/usr/share/rpcd/acl.d/mrouter.json').read_text()); BRIDGE=(CORE/'mrouter-ui-action').read_text(errors='ignore')
-errors=[]; pages=PAGES.get('pages',{}); services=ACTIONS.get('services',{}); allowed_blocks=set(SCHEMA.get('schema',{}).get('block_types',[]))
+errors=[]; pages=PAGES.get('pages',{}); services=ACTIONS.get('services',{}); allowed_blocks=set(SCHEMA.get('schema',{}).get('block_types',[])); allowed_fields=set(SCHEMA.get('schema',{}).get('field_types',[]))
 raw_pages=(APP/'ui-src/pages.yaml').read_text(); raw_runtime=(APP/'htdocs/luci-static/mrouter-ui/schema-runtime.js').read_text()
 if re.search(r'\btype:\s*legacy\b',raw_pages): errors.append('pages.yaml still contains a legacy block')
 if 'loadLegacy' in raw_runtime or 'view.mrouter.' in raw_runtime: errors.append('schema runtime still contains legacy view loading')
 if 'legacy' in allowed_blocks: errors.append('schema still permits legacy blocks')
 
 yaml_pairs=set()
-def walk(obj,pid):
+def walk(obj,pid,ctx='block'):
  if isinstance(obj,dict):
-  if obj.get('type') and obj.get('type') not in allowed_blocks: errors.append(f'{pid}: unsupported block type {obj.get("type")}')
+  typ=obj.get('type')
+  if typ:
+   if ctx=='field':
+    if typ not in allowed_fields: errors.append(f'{pid}: unsupported field type {typ}')
+   elif typ not in allowed_blocks:
+    errors.append(f'{pid}: unsupported block type {typ}')
   svc=obj.get('service')
   if svc and svc not in services: errors.append(f'{pid}: unregistered service {svc}')
   if svc and isinstance(obj.get('action'),str) and not obj['action'].startswith('$field.'): yaml_pairs.add((svc,obj['action']))
-  for v in obj.values(): walk(v,pid)
+  for k,v in obj.items():
+   if k=='fields' and isinstance(v,list):
+    for item in v: walk(item,pid,'field')
+   else:
+    walk(v,pid,'block')
  elif isinstance(obj,list):
-  for v in obj: walk(v,pid)
+  for v in obj: walk(v,pid,ctx)
 for pid,p in pages.items():
  if p.get('renderer')!='yaml': errors.append(f'{pid}: renderer is not yaml')
  if not p.get('layout'): errors.append(f'{pid}: empty layout')
@@ -31,8 +40,6 @@ for pid,p in pages.items():
 
 registered={}; helper_actions={}
 def action_dispatch(text):
- # Only inspect a dispatcher that explicitly switches on ACTION. Inner case
- # statements validate arguments and must not be mistaken for top-level actions.
  m=re.search(r'case\s+"\$ACTION"\s+in(?P<body>.*?)(?:\nesac|\n\s*esac)',text,re.S)
  if not m: return None
  out=set()
