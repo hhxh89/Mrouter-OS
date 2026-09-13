@@ -24,6 +24,7 @@
       {"id":"content-filter","title":"Content Filter","href":"/cgi-bin/luci/admin/protection/content-filter"}
     ]},
     {"id":"advanced","title":"Advanced","order":90,"children":[
+      {"id":"ui-designer","title":"UI Designer","href":"/cgi-bin/luci/admin/advanced/ui-designer"},
       {"id":"network-settings","title":"Network Settings","href":"/cgi-bin/luci/admin/advanced/network-settings/interfaces"},
       {"id":"administration","title":"Administration","href":"/cgi-bin/luci/admin/advanced/administration/system"},
       {"id":"health","title":"System Health","href":"/cgi-bin/luci/admin/advanced/system-health"},
