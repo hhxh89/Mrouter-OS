@@ -30,23 +30,27 @@ for pid,p in pages.items():
  walk(p,pid)
 
 registered={}; helper_actions={}
-def case_actions(text):
+def action_dispatch(text):
+ # Only inspect a dispatcher that explicitly switches on ACTION. Inner case
+ # statements validate arguments and must not be mistaken for top-level actions.
+ m=re.search(r'case\s+"\$ACTION"\s+in(?P<body>.*?)(?:\nesac|\n\s*esac)',text,re.S)
+ if not m: return None
  out=set()
- for m in re.finditer(r'^\s*([A-Za-z0-9_.:-]+(?:\|[A-Za-z0-9_.:-]+)*)\)\s*',text,re.M):
-  out.update(a for a in m.group(1).split('|') if a and a!='*' and not a.startswith('$'))
+ for x in re.finditer(r'^\s*([A-Za-z0-9_.:-]+(?:\|[A-Za-z0-9_.:-]+)*)\)\s*',m.group('body'),re.M):
+  out.update(a for a in x.group(1).split('|') if a and a!='*' and not a.startswith('$'))
  return out
 for sid,s in services.items():
  h=s.get('helper','')
  if not h.startswith('/usr/libexec/mrouter-'): errors.append(f'{sid}: unsafe helper path {h}'); continue
  hf=CORE/Path(h).name; registered[sid]=h
  if not hf.exists(): errors.append(f'{sid}: helper not packaged: {h}'); continue
- helper_actions[sid]=case_actions(hf.read_text(errors='ignore'))
+ helper_actions[sid]=action_dispatch(hf.read_text(errors='ignore'))
 
 ALIASES={('tailscale','up'):('tailscale','bind'),('tailscale','down'):('tailscale','disable'),('adguard','start'):('adguard','enable'),('adguard','stop'):('adguard','disable'),('adguard','restart'):('adguard','enable'),('openvpn','disconnect'):('openvpn','connect')}
 for svc,act in sorted(yaml_pairs):
  if f'{svc}:{act}' not in BRIDGE: errors.append(f'YAML action not allowed by bridge: {svc}:{act}')
- hs,ha=ALIASES.get((svc,act),(svc,act)); accepted=helper_actions.get(hs,set())
- if accepted and ha not in accepted: errors.append(f'YAML action not accepted by helper: {svc}:{act} -> {hs}:{ha} (helper accepts {sorted(accepted)})')
+ hs,ha=ALIASES.get((svc,act),(svc,act)); accepted=helper_actions.get(hs)
+ if accepted is not None and ha not in accepted: errors.append(f'YAML action not accepted by helper: {svc}:{act} -> {hs}:{ha} (helper accepts {sorted(accepted)})')
 
 read_file=ACL['mrouter-ui']['read']['file']; write_file=ACL['mrouter-ui']['write']['file']
 for h in ('/usr/libexec/mrouter-ui-action','/usr/libexec/mrouter-ui-config'):
