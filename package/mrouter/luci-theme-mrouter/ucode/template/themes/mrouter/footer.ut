@@ -4,7 +4,9 @@
 {% endif %}
 </div>
 </div>
-<script src="/luci-static/mrouter/ui-unlock.js?v=1.1.0"></script>
-<script>L.require('menu-material')</script>
+{% if (ctx.authsession): %}
+<link rel="stylesheet" href="/luci-static/mrouter-ui/mrouter-shell.css?v=1.1.0">
+<script src="/luci-static/mrouter-ui/mrouter-shell.js?v=1.1.0"></script>
+{% endif %}
 </body>
 </html>
