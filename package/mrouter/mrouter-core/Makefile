@@ -30,6 +30,7 @@ define Package/mrouter-core/conffiles
 /etc/config/mrouterevents
 /etc/config/mrouterwan
 /etc/config/mrouterwgclient
+/etc/config/mrouterui
 endef
 
 define Build/Compile
@@ -53,6 +54,7 @@ define Package/mrouter-core/postinst
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] || {
 	/usr/libexec/mrouter-migrate >/dev/null 2>&1 || true
+	/usr/libexec/mrouter-ui-config status >/dev/null 2>&1 || true
 	/etc/init.d/mrouter-observer enable >/dev/null 2>&1 || true
 	/etc/init.d/mrouter-observer restart >/dev/null 2>&1 || true
 }
