@@ -39,7 +39,6 @@ def deep_merge(base, patch):
 def apply_page_overlays(pages):
     merged={'version':pages.get('version',1),'pages':dict(pages.get('pages') or {})}
     for p in sorted(SRC.glob(PAGE_OVERLAY_GLOB)):
-        # pages.yaml itself does not match this glob; every overlay is explicit YAML.
         data=load_yaml_file(p)
         for pid,patch in (data.get('pages') or {}).items():
             if pid not in merged['pages']:
@@ -50,6 +49,10 @@ def apply_page_overlays(pages):
 def dump_json(path,obj):
     path.parent.mkdir(parents=True,exist_ok=True)
     path.write_text(json.dumps(obj,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+
+def dump_yaml(path,obj):
+    path.parent.mkdir(parents=True,exist_ok=True)
+    path.write_text(yaml.safe_dump(obj,sort_keys=False,allow_unicode=True,width=120),encoding='utf-8')
 
 def validate_ids(pages,actions,schema):
     allowed=re.compile(r'^[a-z0-9][a-z0-9-]*$')
@@ -108,7 +111,14 @@ def main():
     validate_ids(pages,docs['actions'],docs['schema'])
     WEB.mkdir(parents=True,exist_ok=True); VIEWS.mkdir(parents=True,exist_ok=True); MENU.parent.mkdir(parents=True,exist_ok=True); DEFAULTS.mkdir(parents=True,exist_ok=True)
     for n,obj in docs.items(): dump_json(WEB/(n+'.json'),obj)
-    for n in DOCS: (DEFAULTS/(n+'.yaml')).write_text((SRC/(n+'.yaml')).read_text(encoding='utf-8'),encoding='utf-8')
+    # The UI Designer must edit the actual effective page document, not the
+    # pre-overlay base file. Keep source overlays separately for development,
+    # but publish the fully merged pages YAML as the packaged default.
+    for n in DOCS:
+        if n == 'pages':
+            dump_yaml(DEFAULTS/'pages.yaml', pages)
+        else:
+            (DEFAULTS/(n+'.yaml')).write_text((SRC/(n+'.yaml')).read_text(encoding='utf-8'),encoding='utf-8')
     for p in sorted(SRC.glob(PAGE_OVERLAY_GLOB)):
         (DEFAULTS/p.name).write_text(p.read_text(encoding='utf-8'),encoding='utf-8')
     for old in VIEWS.glob('*.js'): old.unlink()
