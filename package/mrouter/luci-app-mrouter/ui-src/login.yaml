@@ -1,0 +1,12 @@
+version: 1
+login:
+  title: Welcome to Mrouter-OS
+  subtitle: Sign in to manage this router.
+  notice_title: Private management interface
+  notice_text: For the owner and authorised users only.
+  username_label: Username
+  password_label: Password
+  button_label: Log in
+  show_brand: true
+  show_footer: true
+  outer_card: false
