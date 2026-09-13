@@ -1,0 +1,111 @@
+#!/bin/sh
+
+CFG=mrouterui
+SEC=appearance
+YAML=/etc/mrouter/ui.d/appearance.yaml
+JSON=/www/luci-static/mrouter-ui/user-config.json
+
+ensure(){
+    uci -q get "$CFG.$SEC" >/dev/null 2>&1 || {
+        uci set "$CFG.$SEC=ui"
+        uci set "$CFG.$SEC.accent=#007AFF"
+        uci set "$CFG.$SEC.density=compact"
+        uci set "$CFG.$SEC.sidebar_width=212"
+        uci set "$CFG.$SEC.content_max_width=1440"
+        uci set "$CFG.$SEC.form_max_width=360"
+        uci set "$CFG.$SEC.card_radius=14"
+        uci set "$CFG.$SEC.compact_forms=1"
+        uci commit "$CFG"
+    }
+    mkdir -p /etc/mrouter/ui.d /www/luci-static/mrouter-ui
+}
+
+valid_hex(){ echo "$1" | grep -Eq '^#[0-9A-Fa-f]{6}$'; }
+valid_int(){ case "$1" in ''|*[!0-9]*) return 1;; esac; [ "$1" -ge "$2" ] && [ "$1" -le "$3" ]; }
+
+write_files(){
+    accent="$(uci -q get $CFG.$SEC.accent || echo '#007AFF')"
+    density="$(uci -q get $CFG.$SEC.density || echo compact)"
+    sidebar="$(uci -q get $CFG.$SEC.sidebar_width || echo 212)"
+    content="$(uci -q get $CFG.$SEC.content_max_width || echo 1440)"
+    form="$(uci -q get $CFG.$SEC.form_max_width || echo 360)"
+    radius="$(uci -q get $CFG.$SEC.card_radius || echo 14)"
+    compact="$(uci -q get $CFG.$SEC.compact_forms || echo 1)"
+
+    cat >"$YAML" <<EOF
+appearance:
+  accent: "$accent"
+  density: $density
+  sidebar_width: $sidebar
+  content_max_width: $content
+  form_max_width: $form
+  card_radius: $radius
+  compact_forms: $([ "$compact" = 1 ] && echo true || echo false)
+EOF
+
+    cat >"$JSON" <<EOF
+{
+  "version": 1,
+  "appearance": {
+    "accent": "$accent",
+    "density": "$density",
+    "sidebar_width": $sidebar,
+    "content_max_width": $content,
+    "form_max_width": $form,
+    "card_radius": $radius,
+    "compact_forms": $([ "$compact" = 1 ] && echo true || echo false)
+  }
+}
+EOF
+}
+
+status(){
+    ensure
+    write_files
+    printf 'STATUS|%s|%s|%s|%s|%s|%s|%s\n' \
+      "$(uci -q get $CFG.$SEC.accent)" \
+      "$(uci -q get $CFG.$SEC.density)" \
+      "$(uci -q get $CFG.$SEC.sidebar_width)" \
+      "$(uci -q get $CFG.$SEC.content_max_width)" \
+      "$(uci -q get $CFG.$SEC.form_max_width)" \
+      "$(uci -q get $CFG.$SEC.card_radius)" \
+      "$(uci -q get $CFG.$SEC.compact_forms)"
+}
+
+set_values(){
+    ensure
+    accent="$1"; density="$2"; sidebar="$3"; content="$4"; form="$5"; radius="$6"; compact="$7"
+    valid_hex "$accent" || { echo 'ERROR|Invalid accent colour'; exit 2; }
+    case "$density" in compact|comfortable) ;; *) echo 'ERROR|Invalid density'; exit 2;; esac
+    valid_int "$sidebar" 180 320 || { echo 'ERROR|Sidebar width must be 180-320'; exit 2; }
+    valid_int "$content" 900 2200 || { echo 'ERROR|Content width must be 900-2200'; exit 2; }
+    valid_int "$form" 220 640 || { echo 'ERROR|Form width must be 220-640'; exit 2; }
+    valid_int "$radius" 0 28 || { echo 'ERROR|Card radius must be 0-28'; exit 2; }
+    case "$compact" in 0|1) ;; *) echo 'ERROR|Invalid compact_forms'; exit 2;; esac
+
+    uci set "$CFG.$SEC.accent=$accent"
+    uci set "$CFG.$SEC.density=$density"
+    uci set "$CFG.$SEC.sidebar_width=$sidebar"
+    uci set "$CFG.$SEC.content_max_width=$content"
+    uci set "$CFG.$SEC.form_max_width=$form"
+    uci set "$CFG.$SEC.card_radius=$radius"
+    uci set "$CFG.$SEC.compact_forms=$compact"
+    uci commit "$CFG"
+    write_files
+    echo 'OK|saved'
+}
+
+reset(){
+    uci -q delete "$CFG.$SEC"
+    uci commit "$CFG" 2>/dev/null || true
+    ensure
+    write_files
+    echo 'OK|reset'
+}
+
+case "$1" in
+    status|'') status ;;
+    set) shift; [ "$#" -eq 7 ] || { echo 'ERROR|Expected 7 values'; exit 2; }; set_values "$@" ;;
+    reset) reset ;;
+    *) echo 'ERROR|Unknown command'; exit 2 ;;
+esac
