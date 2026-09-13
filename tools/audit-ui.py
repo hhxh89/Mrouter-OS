@@ -14,19 +14,13 @@ SCHEMA=yaml.safe_load((APP/'ui-src/schema.yaml').read_text())
 ACL=json.loads((APP/'root/usr/share/rpcd/acl.d/mrouter.json').read_text())
 BRIDGE=(CORE/'mrouter-ui-action').read_text(errors='ignore')
 errors=[]
+pages=PAGES.get('pages',{}); services=ACTIONS.get('services',{}); allowed_blocks=set(SCHEMA.get('schema',{}).get('block_types',[]))
 
-pages=PAGES.get('pages',{})
-services=ACTIONS.get('services',{})
-allowed_blocks=set(SCHEMA.get('schema',{}).get('block_types',[]))
-
-# Native-only frontend: legacy is a hard build failure.
-raw_pages=(APP/'ui-src/pages.yaml').read_text()
-raw_runtime=(APP/'htdocs/luci-static/mrouter-ui/schema-runtime.js').read_text()
+raw_pages=(APP/'ui-src/pages.yaml').read_text(); raw_runtime=(APP/'htdocs/luci-static/mrouter-ui/schema-runtime.js').read_text()
 if re.search(r'\btype:\s*legacy\b',raw_pages): errors.append('pages.yaml still contains a legacy block')
-if 'loadLegacy' in raw_runtime or "view.mrouter." in raw_runtime: errors.append('schema runtime still contains legacy view loading')
+if 'loadLegacy' in raw_runtime or 'view.mrouter.' in raw_runtime: errors.append('schema runtime still contains legacy view loading')
 if 'legacy' in allowed_blocks: errors.append('schema still permits legacy blocks')
 
-# Every page must be YAML-rendered and only use registered native blocks/services.
 yaml_pairs=set()
 def walk(obj,pid):
  if isinstance(obj,dict):
@@ -43,25 +37,31 @@ for pid,p in pages.items():
  if not p.get('layout'): errors.append(f'{pid}: empty layout')
  walk(p,pid)
 
-# Every service maps to a packaged Mrouter helper.
-registered=set()
+registered={}; helper_actions={}
+def case_actions(text):
+ out=set()
+ for m in re.finditer(r'^\s*([A-Za-z0-9_.:-]+(?:\|[A-Za-z0-9_.:-]+)*)\)\s*',text,re.M):
+  for a in m.group(1).split('|'):
+   if a and a!='*' and not a.startswith('$'): out.add(a)
+ return out
 for sid,s in services.items():
  h=s.get('helper','')
- if not h.startswith('/usr/libexec/mrouter-'): errors.append(f'{sid}: unsafe helper path {h}')
- else:
-  registered.add(h)
-  if not (CORE/Path(h).name).exists(): errors.append(f'{sid}: helper not packaged: {h}')
+ if not h.startswith('/usr/libexec/mrouter-'): errors.append(f'{sid}: unsafe helper path {h}'); continue
+ hf=CORE/Path(h).name; registered[sid]=h
+ if not hf.exists(): errors.append(f'{sid}: helper not packaged: {h}'); continue
+ helper_actions[sid]=case_actions(hf.read_text(errors='ignore'))
 
-# YAML literal action pairs must appear in the bridge allowlist.
 for svc,act in sorted(yaml_pairs):
  if f'{svc}:{act}' not in BRIDGE: errors.append(f'YAML action not allowed by bridge: {svc}:{act}')
+ accepted=helper_actions.get(svc,set())
+ # Status helpers and a few single-purpose helpers may not use a case dispatcher.
+ if accepted and act not in accepted:
+  errors.append(f'YAML action not accepted by helper: {svc}:{act} (helper accepts {sorted(accepted)})')
 
-# ACL must allow the single bridge and UI config helper.
 read_file=ACL['mrouter-ui']['read']['file']; write_file=ACL['mrouter-ui']['write']['file']
 for h in ('/usr/libexec/mrouter-ui-action','/usr/libexec/mrouter-ui-config'):
  if h not in read_file and h not in write_file: errors.append(f'ACL missing {h}')
 
-# Generated menu routes must all point to mrouter-yaml, never old mrouter views.
 menu_path=APP/'root/usr/share/luci/menu.d/zz-mrouter-yaml.json'
 if menu_path.exists():
  menu=json.loads(menu_path.read_text())
@@ -69,7 +69,6 @@ if menu_path.exists():
   path=((node.get('action') or {}).get('path') or '')
   if not path.startswith('mrouter-yaml/'): errors.append(f'{route}: generated route is not native YAML: {path}')
 
-# APK Makefile must explicitly strip the old handwritten view tree.
 mf=(APP/'Makefile').read_text()
 if 'rm -rf $(1)/www/luci-static/resources/view/mrouter' not in mf: errors.append('APK does not exclude legacy mrouter view directory')
 
