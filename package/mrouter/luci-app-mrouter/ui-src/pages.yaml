@@ -1,68 +1,313 @@
 version: 1
 pages:
   internet:
+    route: admin/dashboard
+    order: 1
     title: Internet
     subtitle: WAN status, topology, ports and live traffic
-    renderer: component
-    component: internet
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: internet
   clients:
+    route: admin/connected
+    order: 2
     title: Clients
     subtitle: Real LAN clients, names, groups and traffic totals
-    renderer: component
-    component: clients
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: clients
   iot-clients:
+    route: admin/iot
+    order: 3
     title: IoT Clients
     subtitle: Isolated and managed IoT devices
-    renderer: component
-    component: iot-clients
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: iot-clients
   wireless:
+    route: admin/wireless
+    order: 4
     title: Wireless
     subtitle: Radios, SSIDs and Wi-Fi status
-    renderer: component
-    component: wireless
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: wireless
   events:
+    route: admin/events
+    order: 20
     title: Events & Alerts
     subtitle: Local WAN, VPN, security and new-device events
-    renderer: component
-    component: events
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: events
   vpn-dashboard:
+    route: admin/vpn/dashboard
+    order: 1
     title: VPN
     subtitle: OpenVPN, WireGuard, Tailscale and policy status
-    renderer: component
-    component: vpn-dashboard
-  openvpn: { title: OpenVPN, renderer: component, component: openvpn }
-  wireguard: { title: WireGuard, renderer: component, component: wireguard }
-  tailscale: { title: Tailscale, renderer: component, component: tailscale }
-  policy: { title: Policy Routing, renderer: component, component: policy }
-  local-services: { title: Local Services, renderer: component, component: local-services }
-  adguard: { title: AdGuard Home, renderer: component, component: adguard }
-  ddns: { title: Dynamic DNS, renderer: component, component: ddns }
-  parental: { title: Parental Control, renderer: component, component: parental }
-  content-filter: { title: Content Filter, renderer: component, component: content-filter }
-  ports: { title: Port Assignment, renderer: component, component: ports }
-  networks: { title: Networks, renderer: component, component: networks }
-  dhcp-dns: { title: DHCP & DNS, renderer: component, component: dhcp-dns }
-  firewall: { title: Firewall, renderer: component, component: firewall-modern }
-  routing: { title: Routing, renderer: component, component: routing-modern }
-  traffic-control: { title: Traffic Control, renderer: component, component: traffic-control }
-  diagnostics: { title: Diagnostics, renderer: component, component: diagnostics-modern }
-  multiwan: { title: Multi-WAN, renderer: component, component: multiwan }
-  device-settings: { title: Device Settings, renderer: component, component: device-settings }
-  admin-password: { title: Administrator Account, renderer: component, component: admin-password }
-  admin-ssh: { title: SSH Access, renderer: component, component: admin-ssh }
-  admin-sshkeys: { title: SSH Keys, renderer: component, component: admin-sshkeys }
-  admin-web: { title: Web Access, renderer: component, component: admin-web }
-  admin-startup: { title: Startup & Services, renderer: component, component: admin-startup }
-  admin-scheduled: { title: Scheduled Tasks, renderer: component, component: admin-scheduled }
-  admin-backup: { title: Backup & Firmware, renderer: component, component: admin-backup }
-  health: { title: System Health, renderer: component, component: health }
-  logs: { title: System Log, renderer: component, component: logs-modern }
-  processes: { title: Processes, renderer: component, component: processes-modern }
-  support: { title: Support Bundle, renderer: component, component: support }
-  terminal: { title: Terminal, renderer: component, component: terminal }
-  packages: { title: Package Manager, renderer: component, component: packages-modern }
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: vpn-dashboard
+  openvpn:
+    route: admin/vpn/openvpn
+    order: 2
+    title: OpenVPN
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: openvpn
+  wireguard:
+    route: admin/vpn/wireguard
+    order: 3
+    title: WireGuard
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: wireguard
+  tailscale:
+    route: admin/vpn/tailscale
+    order: 4
+    title: Tailscale
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: tailscale
+  policy:
+    route: admin/vpn/policy-routing
+    order: 5
+    title: Policy Routing
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: policy
+  local-services:
+    route: admin/services/local-services
+    order: 1
+    title: Local Services
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: local-services
+  adguard:
+    route: admin/services/adguardhome
+    order: 2
+    title: AdGuard Home
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: adguard
+  ddns:
+    route: admin/services/ddns
+    order: 3
+    title: Dynamic DNS
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: ddns
+  parental:
+    route: admin/protection/parental
+    order: 1
+    title: Parental Control
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: parental
+  content-filter:
+    route: admin/protection/content-filter
+    order: 2
+    title: Content Filter
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: content-filter
+  ports:
+    route: admin/advanced/network-settings/ports
+    order: 1
+    title: Port Assignment
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: ports
+  networks:
+    route: admin/advanced/network-settings/interfaces
+    order: 2
+    title: Networks
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: networks
+  dhcp-dns:
+    route: admin/advanced/network-settings/dhcp
+    order: 3
+    title: DHCP & DNS
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: dhcp-dns
+  firewall:
+    route: admin/advanced/network-settings/firewall
+    order: 4
+    title: Firewall
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: firewall-modern
+  routing:
+    route: admin/advanced/network-settings/routing
+    order: 5
+    title: Routing
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: routing-modern
+  traffic-control:
+    route: admin/advanced/network-settings/sqm
+    order: 6
+    title: Traffic Control
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: traffic-control
+  diagnostics:
+    route: admin/advanced/network-settings/diagnostics
+    order: 7
+    title: Diagnostics
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: diagnostics-modern
+  multiwan:
+    route: admin/advanced/network-settings/multiwan
+    order: 8
+    title: Multi-WAN
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: multiwan
+  device-settings:
+    route: admin/advanced/administration/system
+    order: 1
+    title: Device Settings
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: device-settings
+  admin-password:
+    route: admin/advanced/administration/password
+    order: 2
+    title: Administrator Account
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: admin-password
+  admin-ssh:
+    route: admin/advanced/administration/ssh
+    order: 3
+    title: SSH Access
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: admin-ssh
+  admin-sshkeys:
+    route: admin/advanced/administration/sshkeys
+    order: 4
+    title: SSH Keys
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: admin-sshkeys
+  admin-web:
+    route: admin/advanced/administration/web
+    order: 5
+    title: Web Access
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: admin-web
+  admin-startup:
+    route: admin/advanced/administration/startup
+    order: 6
+    title: Startup & Services
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: admin-startup
+  admin-scheduled:
+    route: admin/advanced/administration/scheduled
+    order: 7
+    title: Scheduled Tasks
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: admin-scheduled
+  admin-backup:
+    route: admin/advanced/administration/backup
+    order: 8
+    title: Backup & Firmware
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: admin-backup
+  health:
+    route: admin/advanced/system-health
+    order: 25
+    title: System Health
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: health
+  logs:
+    route: admin/advanced/system-log
+    order: 30
+    title: System Log
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: logs-modern
+  processes:
+    route: admin/advanced/processes
+    order: 31
+    title: Processes
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: processes-modern
+  support:
+    route: admin/advanced/support
+    order: 35
+    title: Support Bundle
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: support
+  terminal:
+    route: admin/advanced/terminal
+    order: 40
+    title: Terminal
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: terminal
+  packages:
+    route: admin/advanced/packages
+    order: 60
+    title: Package Manager
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: packages-modern
   ui-designer:
+    route: admin/advanced/ui-designer
+    order: 0
     title: Mrouter UI Designer
     subtitle: Visual and YAML interface customisation
-    renderer: component
-    component: ui-designer
+    renderer: yaml
+    layout:
+      - type: legacy
+        component: ui-designer
