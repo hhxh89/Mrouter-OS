@@ -1,0 +1,119 @@
+#!/bin/sh
+set -e
+
+ACTION="${1:-status}"
+[ "$ACTION" = "status" ] || { echo 'Unknown action'; exit 1; }
+
+json_escape() {
+    printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e ':a;N;$!ba;s/\n/ /g'
+}
+
+fmt_bytes() {
+    V="${1:-0}"
+    case "$V" in ''|*[!0-9]*) V=0 ;; esac
+    if [ "$V" -ge 1073741824 ] 2>/dev/null; then awk "BEGIN { printf \"%.2f GB\", $V/1073741824 }"
+    elif [ "$V" -ge 1048576 ] 2>/dev/null; then awk "BEGIN { printf \"%.1f MB\", $V/1048576 }"
+    elif [ "$V" -ge 1024 ] 2>/dev/null; then awk "BEGIN { printf \"%.1f KB\", $V/1024 }"
+    else printf '%s B' "$V"
+    fi
+}
+
+fmt_duration() {
+    V="${1:-0}"
+    case "$V" in ''|*[!0-9]*) V=0 ;; esac
+    D=$((V/86400)); H=$(((V%86400)/3600)); M=$(((V%3600)/60))
+    if [ "$D" -gt 0 ]; then printf '%sd %sh' "$D" "$H"
+    elif [ "$H" -gt 0 ]; then printf '%sh %sm' "$H" "$M"
+    else printf '%sm' "$M"
+    fi
+}
+
+INFO="$(/usr/libexec/mrouter-internet-info 2>/dev/null || printf '{}')"
+WAN="$(/usr/libexec/mrouter-wan status 2>/dev/null || true)"
+TRAFFIC="$(/usr/libexec/mrouter-traffic-live 2>/dev/null || true)"
+
+jget() { jsonfilter -s "$INFO" -e "@.$1" 2>/dev/null | head -n1; }
+
+ONLINE="$(jget online)"
+PUBLIC_IP="$(jget public_ip)"
+WAN_IP="$(jget local_ip)"
+LAN_IP="$(jget lan_ip)"
+GATEWAY="$(jget gateway)"
+WAN_IF="$(jget interface)"
+DNS="$(jget dns)"
+TYPE="$(jget type)"
+UPTIME="$(jget uptime_seconds)"
+INET_DURATION="$(jget internet_duration)"
+LAN_IF="$(uci -q get network.lan.device || uci -q get network.lan.ifname || true)"
+[ -n "$LAN_IF" ] || LAN_IF='br-lan'
+
+MW_LINE="$(printf '%s\n' "$WAN" | awk -F'|' '$1=="STATUS"{x=$0} END{print x}')"
+Q_LINE="$(printf '%s\n' "$WAN" | awk -F'|' '$1=="QUALITY"{x=$0} END{print x}')"
+NAT_LINE="$(printf '%s\n' "$WAN" | awk -F'|' '$1=="NAT"{x=$0} END{print x}')"
+V6_LINE="$(printf '%s\n' "$WAN" | awk -F'|' '$1=="IPV6"{x=$0} END{print x}')"
+
+IFS='|' read -r _ MW_ON MW_PRI MW_SEC MW_MODE <<EOF
+$MW_LINE
+EOF
+IFS='|' read -r _ Q_TS Q_IF Q_LOSS Q_AVG Q_MAX <<EOF
+$Q_LINE
+EOF
+IFS='|' read -r _ NAT_WAN NAT_PUBLIC NAT_CGNAT <<EOF
+$NAT_LINE
+EOF
+IFS='|' read -r _ V6_IF V6_IP V6_GW <<EOF
+$V6_LINE
+EOF
+
+if [ -n "${Q_AVG:-}" ] && { [ "${Q_AVG:-0}" != 0 ] || [ "${Q_MAX:-0}" != 0 ] || [ "${Q_LOSS:-0}" != 0 ]; }; then
+    LATENCY="${Q_AVG} ms"; LOSS="${Q_LOSS}%"; PEAK="${Q_MAX} ms"
+else
+    LATENCY='No sample'; LOSS='No sample'; PEAK='No sample'
+fi
+
+if [ "${NAT_CGNAT:-0}" = 1 ]; then NAT_TYPE='CGNAT / upstream NAT'; else NAT_TYPE='Publicly routed'; fi
+[ -n "${V6_IP:-}" ] || V6_IP='Not detected'
+if [ "${MW_ON:-0}" = 1 ]; then MULTIWAN="${MW_MODE:-failover}: ${MW_PRI:-wan} / ${MW_SEC:-secondary}"; else MULTIWAN='Off'; fi
+
+WAN_RX=0; WAN_TX=0; VPN_RX=0; VPN_TX=0; VPN_NAME='No active VPN counter'
+while IFS='|' read -r KIND NAME RX TX REST; do
+    case "$KIND" in
+        WAN)
+            if [ "$NAME" = "$WAN_IF" ] || [ "$WAN_RX" = 0 ]; then WAN_RX="${RX:-0}"; WAN_TX="${TX:-0}"; fi
+            ;;
+        VPN)
+            VPN_NAME="$NAME"; VPN_RX="${RX:-0}"; VPN_TX="${TX:-0}"
+            ;;
+    esac
+done <<EOF
+$TRAFFIC
+EOF
+
+STATUS='Offline'; [ "$ONLINE" = true ] && STATUS='Connected'
+
+printf '{'
+printf '"online":%s,' "${ONLINE:-false}"
+printf '"status":"%s",' "$(json_escape "$STATUS")"
+printf '"public_ip":"%s",' "$(json_escape "$PUBLIC_IP")"
+printf '"wan_ip":"%s",' "$(json_escape "$WAN_IP")"
+printf '"local_ip":"%s",' "$(json_escape "$LAN_IP")"
+printf '"lan_ip":"%s",' "$(json_escape "$LAN_IP")"
+printf '"interface":"%s",' "$(json_escape "$LAN_IF")"
+printf '"wan_interface":"%s",' "$(json_escape "$WAN_IF")"
+printf '"gateway":"%s",' "$(json_escape "$GATEWAY")"
+printf '"dns":"%s",' "$(json_escape "$DNS")"
+printf '"type":"%s",' "$(json_escape "$TYPE")"
+printf '"uptime":"%s",' "$(json_escape "$(fmt_duration "$UPTIME")")"
+printf '"connection_duration":"%s",' "$(json_escape "$(fmt_duration "$INET_DURATION")")"
+printf '"latency":"%s",' "$(json_escape "$LATENCY")"
+printf '"packet_loss":"%s",' "$(json_escape "$LOSS")"
+printf '"peak_latency":"%s",' "$(json_escape "$PEAK")"
+printf '"ipv6":"%s",' "$(json_escape "$V6_IP")"
+printf '"nat_type":"%s",' "$(json_escape "$NAT_TYPE")"
+printf '"multiwan":"%s",' "$(json_escape "$MULTIWAN")"
+printf '"wan_received":"%s",' "$(json_escape "$(fmt_bytes "$WAN_RX")")"
+printf '"wan_sent":"%s",' "$(json_escape "$(fmt_bytes "$WAN_TX")")"
+printf '"vpn_name":"%s",' "$(json_escape "$VPN_NAME")"
+printf '"vpn_received":"%s",' "$(json_escape "$(fmt_bytes "$VPN_RX")")"
+printf '"vpn_sent":"%s"' "$(json_escape "$(fmt_bytes "$VPN_TX")")"
+printf '}\n'
