@@ -4,7 +4,6 @@ SERVICE="${1:-}"; ACTION="${2:-status}"
 [ -n "$SERVICE" ] || { echo 'ERROR|Missing service'; exit 2; }
 shift || true
 shift || true
-
 case "$SERVICE" in
   internet) H=/usr/libexec/mrouter-internet-info ;;
   traffic) H=/usr/libexec/mrouter-traffic-live ;;
@@ -45,12 +44,9 @@ case "$SERVICE" in
   ui-config) H=/usr/libexec/mrouter-ui-config ;;
   *) echo 'ERROR|Unknown service'; exit 2 ;;
 esac
-
 [ -x "$H" ] || { echo "ERROR|Service unavailable: $SERVICE"; exit 127; }
 case "$ACTION" in *[!A-Za-z0-9_.:-]*|'') echo 'ERROR|Invalid action'; exit 2;; esac
 
-# Explicit service/action allowlist. YAML can compose the UI but cannot expose
-# arbitrary helper subcommands or arbitrary shell execution.
 case "$SERVICE:$ACTION" in
   internet:refresh|internet:status|traffic:status|client-data:snapshot|client-data:snapshot-iot|iot-info:status|\
   clients:status|clients:alias|clients:quarantine|client-action:block|client-action:reserve|\
@@ -65,9 +61,19 @@ case "$SERVICE:$ACTION" in
   ports:status|status-ports:status|parental:status|status-parental:status|content-filter:status|status-content-filter:status|\
   status-health:status|services:status|\
   advanced:snapshot|advanced:sqm-save|advanced:system-save|advanced:ssh-save|advanced:service-action|advanced:diagnostics|advanced:logs|advanced:processes|advanced:packages|advanced:keys|\
-  ui-config:status|ui-config:set|ui-config:export|ui-config:apply|ui-config:reset)
-    ;;
+  ui-config:status|ui-config:set|ui-config:export|ui-config:apply|ui-config:reset) ;;
   *) echo "ERROR|Action not allowed: $SERVICE:$ACTION"; exit 3 ;;
+esac
+
+# Friendly UI aliases are translated only after the allowlist check.
+# The underlying helpers still receive their native, narrowly-scoped actions.
+case "$SERVICE:$ACTION" in
+  tailscale:up) ACTION=bind ;;
+  tailscale:down) ACTION=disable ;;
+  adguard:start|adguard:restart) ACTION=enable ;;
+  adguard:stop) ACTION=disable ;;
+  openvpn:connect) set -- 1 "$@"; ACTION=connect ;;
+  openvpn:disconnect) set -- 0 "$@"; ACTION=connect ;;
 esac
 
 exec "$H" "$ACTION" "$@"
