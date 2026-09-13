@@ -1,0 +1,132 @@
+version: 1
+pages:
+  local-services:
+    sources:
+      services: { service: services, action: status, parser: pipe }
+    layout:
+    - type: records
+      title: Services
+      source: services
+      tags: [SERVICE]
+      columns: [ID, Type, Name, Host, Port, Scheme]
+      row_actions:
+      - { label: Test, service: services, action: test, args: [$row.0], output: true, style: secondary }
+      - { label: Delete, service: services, action: delete, args: [$row.0], style: danger, confirm: 'Delete this local service?', reload: true }
+    - { type: records, title: DNS Provider, source: services, tags: [DNS], columns: [Mode, Pi-hole host, Pi-hole port] }
+    - type: form
+      title: Add Local Service
+      fields:
+      - { id: type, type: text, label: Type, placeholder: app }
+      - { id: name, type: text, label: Name }
+      - { id: host, type: text, label: Host / IP }
+      - { id: port, type: number, label: Port }
+      - { id: scheme, type: select, label: Scheme, options: [http, https] }
+      actions:
+      - { label: Add Service, service: services, action: add, args: [$field.type, $field.name, $field.host, $field.port, $field.scheme], style: primary, reload: true }
+    - type: form
+      title: Use Pi-hole for DNS
+      fields:
+      - { id: host, type: text, label: Pi-hole host / IP }
+      - { id: port, type: number, label: DNS port, default: 53 }
+      actions:
+      - { label: Switch to Pi-hole, service: services, action: dns-pihole, args: [$field.host, $field.port], style: primary, confirm: 'Switch client DNS to the specified Pi-hole?', reload: true }
+    - type: actions
+      title: Mrouter DNS
+      items:
+      - { label: Use Mrouter DNS, service: services, action: dns-mrouter, style: secondary, confirm: 'Switch client DNS back to Mrouter-managed DNS?', reload: true }
+  ddns:
+    sources:
+      status: { service: ddns, action: status, parser: pipe }
+    layout:
+    - { type: records, title: Public IP, source: status, tags: [PUBLIC], columns: [IPv4] }
+    - type: records
+      title: DDNS Services
+      source: status
+      tags: [SERVICE]
+      columns: [ID, Provider, Hostname, Enabled, Last IP, Last update/result]
+      row_actions:
+      - { label: Enable, service: ddns, action: toggle, args: [$row.0, '1'], style: primary, reload: true }
+      - { label: Disable, service: ddns, action: toggle, args: [$row.0, '0'], style: secondary, reload: true }
+      - { label: Update Now, service: ddns, action: force, args: [$row.0], style: secondary, reload: true }
+      - { label: Delete, service: ddns, action: delete, args: [$row.0], style: danger, confirm: 'Delete this DDNS service?', reload: true }
+    - type: form
+      title: Add DDNS Service
+      fields:
+      - { id: provider, type: select, label: Provider, options: [cloudflare, duckdns, desec, dynu] }
+      - { id: hostname, type: text, label: Hostname }
+      - { id: username, type: text, label: Username / zone ID, help: Provider-specific; can be blank when not required. }
+      - { id: secret, type: password, label: Token / secret }
+      actions:
+      - { label: Add DDNS, service: ddns, action: add, args: [$field.provider, $field.hostname, $field.username, $field.secret], style: primary, reload: true }
+  parental:
+    sources:
+      status:
+        service: parental
+        action: status
+        parser: pipe
+        fields: [enabled, profile_count, active_count]
+    layout:
+    - type: stats
+      items:
+      - { label: Enabled, value_from: status.enabled }
+      - { label: Profiles, value_from: status.profile_count }
+      - { label: Active now, value_from: status.active_count }
+    - type: records
+      title: Profiles
+      source: status
+      tags: [PROFILE]
+      columns: [ID, Name, Enabled, Paused, Days, Start, End, MACs, Active]
+      row_actions:
+      - { label: Pause, service: parental, action: pause, args: [$row.0, '1'], style: secondary, reload: true }
+      - { label: Resume, service: parental, action: pause, args: [$row.0, '0'], style: primary, reload: true }
+      - { label: Delete, service: parental, action: delete, args: [$row.0], style: danger, confirm: 'Delete this parental-control profile?', reload: true }
+    - type: form
+      title: Add / Replace Profile
+      fields:
+      - { id: id, type: text, label: Profile ID, default: new, help: Use new for a new profile. }
+      - { id: name, type: text, label: Name, default: Family profile }
+      - { id: enabled, type: toggle, label: Enabled, default: true }
+      - { id: macs, type: textarea, label: Client MACs }
+      - { id: days, type: text, label: Days, default: '1,2,3,4,5,6,7' }
+      - { id: start, type: text, label: Block start, default: '21:00' }
+      - { id: end, type: text, label: Block end, default: '07:00' }
+      actions:
+      - { label: Save Profile, service: parental, action: save, args: [$field.id, $field.name, $field.enabled, $field.macs, $field.days, $field.start, $field.end], style: primary, reload: true }
+    - type: actions
+      title: Parental Control
+      items:
+      - { label: Enable, service: parental, action: enable, args: ['1'], style: primary, reload: true }
+      - { label: Disable, service: parental, action: enable, args: ['0'], style: secondary, reload: true }
+      - { label: Apply Now, service: parental, action: apply, style: secondary, reload: true }
+  content-filter:
+    sources:
+      status:
+        service: content-filter
+        action: status
+        parser: pipe
+        fields: [enabled, force_dns, block_dot, domain_count, ip_count, allow_count]
+    layout:
+    - type: stats
+      items:
+      - { label: Enabled, value_from: status.enabled }
+      - { label: Blocked domains, value_from: status.domain_count }
+      - { label: Blocked IPs, value_from: status.ip_count }
+      - { label: Allowed domains, value_from: status.allow_count }
+    - { type: records, title: Blocked Domains, source: status, tags: [DOMAIN], columns: [Domain] }
+    - { type: records, title: Allowed Domains, source: status, tags: [ALLOW], columns: [Domain] }
+    - { type: records, title: Blocked IPs, source: status, tags: [IP], columns: [IP / prefix] }
+    - type: form
+      title: Filter Settings
+      fields:
+      - { id: enabled, type: toggle, label: Enable filtering, default_from: status.enabled }
+      - { id: force_dns, type: toggle, label: Force client DNS, default_from: status.force_dns }
+      - { id: block_dot, type: toggle, label: Block DNS-over-TLS, default_from: status.block_dot }
+      - { id: domains, type: textarea, label: Blocked domains, help: Space, comma or newline separated. }
+      - { id: ips, type: textarea, label: Blocked IPs / prefixes }
+      - { id: allow, type: textarea, label: Allowed domains }
+      actions:
+      - { label: Save & Apply, service: content-filter, action: save, args: [$field.enabled, $field.force_dns, $field.block_dot, $field.domains, $field.ips, $field.allow], style: primary, reload: true }
+    - type: actions
+      title: Filter Service
+      items:
+      - { label: Apply Existing Rules, service: content-filter, action: apply, style: secondary, reload: true }
