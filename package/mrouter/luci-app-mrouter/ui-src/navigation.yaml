@@ -1,0 +1,106 @@
+version: 1
+brand:
+  name: Mrouter-OS
+  home: /cgi-bin/luci/admin/dashboard
+navigation:
+  - id: internet
+    title: Internet
+    href: /cgi-bin/luci/admin/dashboard
+    order: 10
+  - id: clients
+    title: Clients
+    href: /cgi-bin/luci/admin/connected
+    order: 20
+  - id: iot
+    title: IoT Clients
+    href: /cgi-bin/luci/admin/iot
+    order: 30
+  - id: wireless
+    title: Wireless
+    href: /cgi-bin/luci/admin/wireless
+    order: 40
+  - id: events
+    title: Events
+    href: /cgi-bin/luci/admin/events
+    order: 50
+  - id: vpn
+    title: VPN
+    order: 60
+    children:
+      - id: vpn-dashboard
+        title: Dashboard
+        href: /cgi-bin/luci/admin/vpn/dashboard
+      - id: openvpn
+        title: OpenVPN
+        href: /cgi-bin/luci/admin/vpn/openvpn
+      - id: wireguard
+        title: WireGuard
+        href: /cgi-bin/luci/admin/vpn/wireguard
+      - id: tailscale
+        title: Tailscale
+        href: /cgi-bin/luci/admin/vpn/tailscale
+      - id: policy
+        title: Policy Routing
+        href: /cgi-bin/luci/admin/vpn/policy-routing
+  - id: services
+    title: Services
+    order: 70
+    children:
+      - id: local-services
+        title: Local Services
+        href: /cgi-bin/luci/admin/services/local-services
+      - id: adguard
+        title: AdGuard Home
+        href: /cgi-bin/luci/admin/services/adguardhome
+      - id: ddns
+        title: Dynamic DNS
+        href: /cgi-bin/luci/admin/services/ddns
+  - id: protection
+    title: Protection
+    order: 80
+    children:
+      - id: parental
+        title: Parental Control
+        href: /cgi-bin/luci/admin/protection/parental
+      - id: content-filter
+        title: Content Filter
+        href: /cgi-bin/luci/admin/protection/content-filter
+  - id: advanced
+    title: Advanced
+    order: 90
+    children:
+      - id: network-settings
+        title: Network Settings
+        href: /cgi-bin/luci/admin/advanced/network-settings/interfaces
+      - id: administration
+        title: Administration
+        href: /cgi-bin/luci/admin/advanced/administration/system
+      - id: health
+        title: System Health
+        href: /cgi-bin/luci/admin/advanced/system-health
+      - id: logs
+        title: System Log
+        href: /cgi-bin/luci/admin/advanced/system-log
+      - id: processes
+        title: Processes
+        href: /cgi-bin/luci/admin/advanced/processes
+      - id: support
+        title: Support Bundle
+        href: /cgi-bin/luci/admin/advanced/support
+      - id: terminal
+        title: Terminal
+        href: /cgi-bin/luci/admin/advanced/terminal
+      - id: packages
+        title: Package Manager
+        href: /cgi-bin/luci/admin/advanced/packages
+      - id: expert
+        title: Expert LuCI
+        href: /cgi-bin/luci/admin/advanced/expert/interfaces
+  - id: reboot
+    title: Reboot
+    href: /cgi-bin/luci/admin/reboot
+    order: 998
+  - id: logout
+    title: Log out
+    href: /cgi-bin/luci/admin/logout
+    order: 999
