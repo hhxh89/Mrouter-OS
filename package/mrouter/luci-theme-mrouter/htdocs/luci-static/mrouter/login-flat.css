@@ -1,0 +1,9 @@
+/* Final login refinement: remove the outer login rectangle only. */
+body.node-main-login .mrouter-login-map {
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
