@@ -1,0 +1,21 @@
+#!/bin/sh
+set -eu
+ACTION="${1:-status}"
+status(){
+  ROOTPW="$(awk -F: '$1=="root"{print $2}' /etc/shadow 2>/dev/null || true)"
+  SET=0; case "$ROOTPW" in ''|'!'|'*') SET=0;; *) SET=1;; esac
+  printf 'STATUS|%s\n' "$SET"
+}
+set_password(){
+  P="${2:-}"; C="${3:-}"
+  [ "$P" = "$C" ] || { echo 'ERROR|Passwords do not match'; exit 2; }
+  [ ${#P} -ge 8 ] || { echo 'ERROR|Password must be at least 8 characters'; exit 2; }
+  case "$P" in *$'\n'*|*$'\r'*) echo 'ERROR|Invalid password'; exit 2;; esac
+  printf '%s\n%s\n' "$P" "$P" | passwd root >/dev/null 2>&1 || { echo 'ERROR|Unable to change administrator password'; exit 1; }
+  echo 'OK|Administrator password updated'
+}
+case "$ACTION" in
+  status) status ;;
+  set) set_password "$@" ;;
+  *) echo 'ERROR|Unknown account action'; exit 2 ;;
+esac
