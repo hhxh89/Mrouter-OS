@@ -1,0 +1,156 @@
+version: 1
+pages:
+  internet:
+    title: Internet
+    subtitle: WAN status, topology, ports and live traffic
+    renderer: component
+    component: internet
+  clients:
+    title: Clients
+    subtitle: Real LAN clients, names, groups and traffic totals
+    renderer: component
+    component: clients
+  iot-clients:
+    title: IoT Clients
+    subtitle: Isolated and managed IoT devices
+    renderer: component
+    component: iot-clients
+  wireless:
+    title: Wireless
+    subtitle: Radios, SSIDs and Wi-Fi status
+    renderer: component
+    component: wireless
+  events:
+    title: Events & Alerts
+    subtitle: Local WAN, VPN, security and new-device events
+    renderer: component
+    component: events
+  vpn-dashboard:
+    title: VPN
+    subtitle: OpenVPN, WireGuard, Tailscale and policy status
+    renderer: component
+    component: vpn-dashboard
+  openvpn:
+    title: OpenVPN
+    renderer: component
+    component: openvpn
+  wireguard:
+    title: WireGuard
+    renderer: component
+    component: wireguard
+  tailscale:
+    title: Tailscale
+    renderer: component
+    component: tailscale
+  policy:
+    title: Policy Routing
+    renderer: component
+    component: policy
+  local-services:
+    title: Local Services
+    renderer: component
+    component: local-services
+  adguard:
+    title: AdGuard Home
+    renderer: component
+    component: adguard
+  ddns:
+    title: Dynamic DNS
+    renderer: component
+    component: ddns
+  parental:
+    title: Parental Control
+    renderer: component
+    component: parental
+  content-filter:
+    title: Content Filter
+    renderer: component
+    component: content-filter
+  ports:
+    title: Port Assignment
+    renderer: component
+    component: ports
+  networks:
+    title: Networks
+    renderer: component
+    component: networks
+  dhcp-dns:
+    title: DHCP & DNS
+    renderer: component
+    component: dhcp-dns
+  firewall:
+    title: Firewall
+    renderer: component
+    component: firewall-modern
+  routing:
+    title: Routing
+    renderer: component
+    component: routing-modern
+  traffic-control:
+    title: Traffic Control
+    renderer: component
+    component: traffic-control
+  diagnostics:
+    title: Diagnostics
+    renderer: component
+    component: diagnostics-modern
+  multiwan:
+    title: Multi-WAN
+    renderer: component
+    component: multiwan
+  device-settings:
+    title: Device Settings
+    renderer: component
+    component: device-settings
+  admin-password:
+    title: Administrator Account
+    renderer: component
+    component: admin-password
+  admin-ssh:
+    title: SSH Access
+    renderer: component
+    component: admin-ssh
+  admin-sshkeys:
+    title: SSH Keys
+    renderer: component
+    component: admin-sshkeys
+  admin-web:
+    title: Web Access
+    renderer: component
+    component: admin-web
+  admin-startup:
+    title: Startup & Services
+    renderer: component
+    component: admin-startup
+  admin-scheduled:
+    title: Scheduled Tasks
+    renderer: component
+    component: admin-scheduled
+  admin-backup:
+    title: Backup & Firmware
+    renderer: component
+    component: admin-backup
+  health:
+    title: System Health
+    renderer: component
+    component: health
+  logs:
+    title: System Log
+    renderer: component
+    component: logs-modern
+  processes:
+    title: Processes
+    renderer: component
+    component: processes-modern
+  support:
+    title: Support Bundle
+    renderer: component
+    component: support
+  terminal:
+    title: Terminal
+    renderer: component
+    component: terminal
+  packages:
+    title: Package Manager
+    renderer: component
+    component: packages-modern
