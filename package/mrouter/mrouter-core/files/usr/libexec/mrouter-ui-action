@@ -65,8 +65,6 @@ case "$SERVICE:$ACTION" in
   *) echo "ERROR|Action not allowed: $SERVICE:$ACTION"; exit 3 ;;
 esac
 
-# Friendly UI aliases are translated only after the allowlist check.
-# The underlying helpers still receive their native, narrowly-scoped actions.
 case "$SERVICE:$ACTION" in
   tailscale:up) ACTION=bind ;;
   tailscale:down) ACTION=disable ;;
@@ -74,6 +72,7 @@ case "$SERVICE:$ACTION" in
   adguard:stop) ACTION=disable ;;
   openvpn:connect) set -- 1 "$@"; ACTION=connect ;;
   openvpn:disconnect) set -- 0 "$@"; ACTION=connect ;;
+  policy:reconcile) ACTION=status ;;
 esac
 
 exec "$H" "$ACTION" "$@"
