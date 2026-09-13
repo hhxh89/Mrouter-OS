@@ -1,0 +1,274 @@
+version: 1
+pages:
+  vpn-dashboard:
+    sources:
+      openvpn:
+        service: status-openvpn
+        action: status
+        parser: pipe
+      wireguard:
+        service: status-wireguard
+        action: status
+        parser: pipe
+      wgclients:
+        service: status-wireguard-client
+        action: status
+        parser: pipe
+      tailscale:
+        service: status-tailscale
+        action: status
+        parser: pipe
+      policy:
+        service: status-policy
+        action: status
+        parser: pipe
+    layout:
+    - type: records
+      title: OpenVPN
+      source: openvpn
+    - type: records
+      title: WireGuard Remote Access
+      source: wireguard
+    - type: records
+      title: WireGuard VPN Clients
+      source: wgclients
+    - type: records
+      title: Tailscale
+      source: tailscale
+    - type: records
+      title: Policy Routing
+      source: policy
+    - type: link
+      title: OpenVPN
+      text: Import provider profiles, credentials and control the tunnel.
+      label: Manage OpenVPN
+      href: /cgi-bin/luci/admin/vpn/openvpn
+    - type: link
+      title: WireGuard
+      text: Remote-access peers and outbound VPN provider profiles.
+      label: Manage WireGuard
+      href: /cgi-bin/luci/admin/vpn/wireguard
+    - type: link
+      title: Tailscale
+      text: Tailnet binding, subnet-router and exit-node settings.
+      label: Manage Tailscale
+      href: /cgi-bin/luci/admin/vpn/tailscale
+    - type: link
+      title: Policy Routing
+      text: Choose which clients and destinations use WAN or VPN.
+      label: Manage Policies
+      href: /cgi-bin/luci/admin/vpn/policy-routing
+  openvpn:
+    sources:
+      status:
+        service: openvpn
+        action: status
+        parser: pipe
+    layout:
+    - type: records
+      title: Connection
+      source: status
+      tags: [STATUS]
+      columns: [Configured, Connected, Selected profile, Remote, Protocol, Device, VPN IP, RX bytes, TX bytes, Credentials]
+    - type: records
+      title: Imported Profiles
+      source: status
+      tags: [PROFILE]
+      columns: [Profile]
+      row_actions:
+      - label: Use
+        service: openvpn
+        action: select
+        args: [$row.0]
+        style: primary
+        reload: true
+      empty: No profiles imported.
+    - type: upload
+      title: Import VPN Configuration
+      text: Import .ovpn, .conf, .zip, .tar.gz or .tgz supplied by your VPN provider.
+      label: Import Configuration
+      upload_path: /tmp/mrouter-openvpn-upload
+      help: 'Supported: .ovpn, .conf, .zip, .tar.gz and .tgz'
+      service: openvpn
+      action: import
+      args: [$upload.name]
+      reload: true
+    - type: actions
+      title: Connection
+      items:
+      - { label: Connect, service: openvpn, action: connect, style: primary, reload: true }
+      - { label: Disconnect, service: openvpn, action: disconnect, style: secondary, reload: true }
+    - type: form
+      title: Provider Login
+      fields:
+      - { id: username, type: text, label: Username, help: Leave both fields blank to clear saved credentials. }
+      - { id: password, type: password, label: Password }
+      actions:
+      - { label: Save Credentials, service: openvpn, action: credentials, args: [$field.username, $field.password], style: primary, reload: true }
+    - type: actions
+      title: Imported Data
+      items:
+      - { label: Remove Imported Profiles, service: openvpn, action: remove, style: danger, confirm: 'Remove all imported OpenVPN profiles?', reload: true }
+  wireguard:
+    sources:
+      server: { service: wireguard, action: status, parser: pipe }
+      clients: { service: wireguard-client, action: status, parser: pipe }
+    layout:
+    - type: records
+      title: Remote Access Server
+      source: server
+      tags: [STATUS]
+      columns: [Configured, Running, Interface, UDP port, Address, Public endpoint]
+    - type: form
+      title: Create Remote-Access Client
+      fields:
+      - { id: endpoint, type: text, label: Public endpoint, placeholder: vpn.example.com or public IP }
+      - { id: full, type: toggle, label: Full tunnel, default: true }
+      - { id: name, type: text, label: Client name, placeholder: iPhone }
+      actions:
+      - { label: Generate Client, service: wireguard, action: generate, args: [$field.endpoint, $field.full, $field.name], style: primary, output: true }
+    - type: records
+      title: Saved Remote Clients
+      source: server
+      tags: [CLIENT]
+      columns: [ID, Name]
+      row_actions:
+      - { label: View Config, service: wireguard, action: view, args: [$row.0], output: true, style: secondary }
+      - { label: Revoke, service: wireguard, action: revoke, args: [$row.0], style: danger, confirm: 'Revoke this WireGuard remote-access client?', reload: true }
+      empty: No remote-access clients yet.
+    - type: actions
+      title: Server
+      items:
+      - { label: Restart WireGuard, service: wireguard, action: restart, style: secondary, reload: true }
+    - type: records
+      title: Outbound VPN Profiles
+      source: clients
+      tags: [PROFILE]
+      columns: [ID, Name, Interface, Enabled, Up, Healthy, Handshake age, Endpoint, Address, DNS, RX, TX, Full tunnel]
+      row_actions:
+      - { label: Connect, service: wireguard-client, action: connect, args: [$row.0], style: primary, reload: true }
+      - { label: Disconnect, service: wireguard-client, action: disconnect, args: [$row.0], style: secondary, reload: true }
+      - { label: Delete, service: wireguard-client, action: delete, args: [$row.0], style: danger, confirm: 'Delete this WireGuard VPN profile?', reload: true }
+      empty: No outbound WireGuard profiles imported.
+    - type: upload
+      title: Import WireGuard VPN Profile
+      text: Import a standard WireGuard .conf file. Mrouter keeps normal WAN as the default route; Policy Routing decides who uses the tunnel.
+      label: Import WireGuard .conf
+      upload_path: /tmp/mrouter-wireguard-client-upload
+      help: Standard WireGuard .conf
+      service: wireguard-client
+      action: import
+      args: [$upload.name]
+      reload: true
+    - type: form
+      title: Rename VPN Profile
+      fields:
+      - { id: profile, type: text, label: Profile ID }
+      - { id: name, type: text, label: New name }
+      actions:
+      - { label: Rename, service: wireguard-client, action: rename, args: [$field.profile, $field.name], style: secondary, reload: true }
+  tailscale:
+    sources:
+      status:
+        service: tailscale
+        action: status
+        parser: pipe
+        fields: [enabled, service, connected, backend, ip, account, tailnet, hostname, lan, unused1, unused2, adv_lan, unused3, unused4, run_exit, snat, accept_routes, accept_dns, exit_node, auth_url]
+    layout:
+    - type: stats
+      items:
+      - { label: Backend, value_from: status.backend }
+      - { label: Tailscale IP, value_from: status.ip }
+      - { label: Tailnet, value_from: status.tailnet }
+      - { label: Account, value_from: status.account }
+      - { label: LAN subnet, value_from: status.lan }
+      - { label: Exit node, value_from: status.exit_node }
+    - type: actions
+      title: Connection
+      items:
+      - { label: Enable / Get Bind Link, service: tailscale, action: bind, style: primary, output: true }
+      - { label: Finalize After Login, service: tailscale, action: finalize, style: secondary, reload: true }
+      - { label: Disconnect, service: tailscale, action: disable, style: danger, confirm: 'Disconnect Mrouter-OS from Tailscale?', reload: true }
+    - type: link
+      title: Device Bind Link
+      text: Open the authentication URL returned by Tailscale. If no URL is shown, press Enable / Get Bind Link first.
+      label: Open Tailscale Login
+      href_from: status.auth_url
+    - type: form
+      title: Router Settings
+      fields:
+      - { id: run_exit, type: toggle, label: Run as exit node, default_from: status.run_exit }
+      - { id: snat, type: toggle, label: IP masquerading, default_from: status.snat }
+      - { id: custom_exit, type: toggle, label: Use another Tailscale exit node, default: false }
+      - { id: exit_node, type: text, label: Exit node, default_from: status.exit_node, placeholder: 100.x.x.x or device name }
+      actions:
+      - { label: Apply Router Settings, service: tailscale, action: apply, args: [$field.run_exit, $field.snat, '0', $field.custom_exit, $field.exit_node], style: primary, reload: true }
+    - type: notice
+      text: Mrouter advertises only the LAN subnet. IoT remains isolated and accept-routes / accept-DNS stay disabled to avoid route and DNS conflicts.
+  policy:
+    sources:
+      status: { service: policy, action: status, parser: pipe }
+    layout:
+    - { type: records, title: Routing Targets, source: status, tags: [TARGET], columns: [Target, Label, Up] }
+    - type: records
+      title: Client Groups
+      source: status
+      tags: [GROUP]
+      columns: [ID, Name, MAC addresses]
+      row_actions:
+      - { label: Delete Group, service: policy, action: group-delete, args: [$row.0], style: danger, confirm: 'Delete this policy group?', reload: true }
+    - type: records
+      title: Policies
+      source: status
+      tags: [POLICY]
+      columns: [ID, Name, Current target, Source, Destination, Enabled, Source type, Source value, Destination type, Destination value, Desired target, Fail mode, Fallback, Schedule, Days, Window]
+      row_actions:
+      - { label: Enable, service: policy, action: toggle, args: [$row.0, '1'], style: primary, reload: true }
+      - { label: Disable, service: policy, action: toggle, args: [$row.0, '0'], style: secondary, reload: true }
+      - { label: Up, service: policy, action: move, args: [$row.0, up], style: secondary, reload: true }
+      - { label: Down, service: policy, action: move, args: [$row.0, down], style: secondary, reload: true }
+      - { label: Delete, service: policy, action: delete, args: [$row.0], style: danger, confirm: 'Delete this routing policy?', reload: true }
+    - type: form
+      title: Add Policy
+      fields:
+      - { id: name, type: text, label: Policy name }
+      - { id: source_type, type: select, label: Source type, options: [all, devices, group, iot, wgremote, tailscale, subnet] }
+      - { id: source_value, type: text, label: Source value, help: MACs, group ID or subnet depending on source type. }
+      - { id: dest_type, type: select, label: Destination type, options: [all, custom, exclude, service, country, subscription] }
+      - { id: dest_value, type: text, label: Destination, help: Domain/IP list, service key, 2-letter country code or subscription URL. }
+      - id: target
+        type: select
+        label: Target
+        options_from: { source: status, tags: [TARGET], value_index: 0, label_index: 1 }
+      - { id: fail, type: select, label: If VPN unavailable, options: [block, wan, other] }
+      - id: fallback
+        type: select
+        label: Fallback VPN
+        options_from: { source: status, tags: [TARGET], value_index: 0, label_index: 1, prepend: { value: '', label: None } }
+      - { id: schedule, type: select, label: Schedule, options: [always, weekdays, weekends, custom] }
+      - { id: days, type: text, label: Custom days, placeholder: '1,2,3,4,5' }
+      - { id: start, type: text, label: Start, default: '00:00' }
+      - { id: end, type: text, label: End, default: '23:59' }
+      actions:
+      - { label: Add Policy, service: policy, action: add, args: [$field.name, $field.source_type, $field.source_value, $field.dest_type, $field.dest_value, $field.target, $field.fail, $field.fallback, $field.schedule, $field.days, $field.start, $field.end], style: primary, reload: true }
+    - type: form
+      title: Create Client Group
+      fields:
+      - { id: name, type: text, label: Group name }
+      - { id: macs, type: textarea, label: MAC addresses, help: Comma or space separated. }
+      actions:
+      - { label: Create Group, service: policy, action: group-add, args: [$field.name, $field.macs], reload: true }
+    - type: form
+      title: Test Policy
+      fields:
+      - { id: mac, type: text, label: Client MAC }
+      - { id: ip, type: text, label: Client IP }
+      - { id: dest, type: text, label: Destination }
+      actions:
+      - { label: Test, service: policy, action: test, args: [$field.mac, $field.ip, $field.dest], output: true, style: secondary }
+    - type: actions
+      title: Policy Service
+      items:
+      - { label: Enable PBR, service: policy, action: service, args: ['1'], style: primary, reload: true }
+      - { label: Disable PBR, service: policy, action: service, args: ['0'], style: secondary, reload: true }
+      - { label: Refresh State, service: policy, action: reconcile, style: secondary, reload: true }
