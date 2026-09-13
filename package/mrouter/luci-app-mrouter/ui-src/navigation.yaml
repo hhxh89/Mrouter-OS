@@ -20,85 +20,59 @@ navigation:
     href: /cgi-bin/luci/admin/wireless
     order: 40
   - id: events
-    title: Events
+    title: Events & Alerts
     href: /cgi-bin/luci/admin/events
     order: 50
   - id: vpn
-    title: VPN
+    title: VPN & Remote Access
     order: 60
     children:
-      - id: vpn-dashboard
-        title: Dashboard
-        href: /cgi-bin/luci/admin/vpn/dashboard
-      - id: openvpn
-        title: OpenVPN
-        href: /cgi-bin/luci/admin/vpn/openvpn
-      - id: wireguard
-        title: WireGuard
-        href: /cgi-bin/luci/admin/vpn/wireguard
-      - id: tailscale
-        title: Tailscale
-        href: /cgi-bin/luci/admin/vpn/tailscale
-      - id: policy
-        title: Policy Routing
-        href: /cgi-bin/luci/admin/vpn/policy-routing
+      - { id: vpn-dashboard, title: VPN Dashboard, href: /cgi-bin/luci/admin/vpn/dashboard }
+      - { id: openvpn, title: OpenVPN, href: /cgi-bin/luci/admin/vpn/openvpn }
+      - { id: wireguard, title: WireGuard, href: /cgi-bin/luci/admin/vpn/wireguard }
+      - { id: tailscale, title: Tailscale, href: /cgi-bin/luci/admin/vpn/tailscale }
+      - { id: policy, title: Policy Routing, href: /cgi-bin/luci/admin/vpn/policy-routing }
   - id: services
-    title: Services
+    title: Services & DNS
     order: 70
     children:
-      - id: local-services
-        title: Local Services
-        href: /cgi-bin/luci/admin/services/local-services
-      - id: adguard
-        title: AdGuard Home
-        href: /cgi-bin/luci/admin/services/adguardhome
-      - id: ddns
-        title: Dynamic DNS
-        href: /cgi-bin/luci/admin/services/ddns
+      - { id: local-services, title: Local Services, href: /cgi-bin/luci/admin/services/local-services }
+      - { id: adguard, title: AdGuard Home, href: /cgi-bin/luci/admin/services/adguardhome }
+      - { id: ddns, title: Dynamic DNS, href: /cgi-bin/luci/admin/services/ddns }
   - id: protection
     title: Protection
     order: 80
     children:
-      - id: parental
-        title: Parental Control
-        href: /cgi-bin/luci/admin/protection/parental
-      - id: content-filter
-        title: Content Filter
-        href: /cgi-bin/luci/admin/protection/content-filter
+      - { id: parental, title: Parental Control, href: /cgi-bin/luci/admin/protection/parental }
+      - { id: content-filter, title: Content Filter, href: /cgi-bin/luci/admin/protection/content-filter }
   - id: advanced
-    title: Advanced
+    title: System & Advanced
     order: 90
     children:
-      - id: ui-designer
-        title: UI Designer
-        href: /cgi-bin/luci/admin/advanced/ui-designer
-      - id: network-settings
-        title: Network Settings
-        href: /cgi-bin/luci/admin/advanced/network-settings/interfaces
-      - id: administration
-        title: Administration
-        href: /cgi-bin/luci/admin/advanced/administration/system
-      - id: health
-        title: System Health
-        href: /cgi-bin/luci/admin/advanced/system-health
-      - id: logs
-        title: System Log
-        href: /cgi-bin/luci/admin/advanced/system-log
-      - id: processes
-        title: Processes
-        href: /cgi-bin/luci/admin/advanced/processes
-      - id: support
-        title: Support Bundle
-        href: /cgi-bin/luci/admin/advanced/support
-      - id: terminal
-        title: Terminal
-        href: /cgi-bin/luci/admin/advanced/terminal
-      - id: packages
-        title: Package Manager
-        href: /cgi-bin/luci/admin/advanced/packages
-      - id: expert
-        title: Expert LuCI
-        href: /cgi-bin/luci/admin/advanced/expert/interfaces
+      - { id: ui-designer, title: UI Designer & YAML, href: /cgi-bin/luci/admin/advanced/ui-designer }
+      - { id: ports, title: Port Assignment, href: /cgi-bin/luci/admin/advanced/network-settings/ports }
+      - { id: networks, title: Networks, href: /cgi-bin/luci/admin/advanced/network-settings/interfaces }
+      - { id: dhcp, title: DHCP & DNS, href: /cgi-bin/luci/admin/advanced/network-settings/dhcp }
+      - { id: firewall, title: Firewall, href: /cgi-bin/luci/admin/advanced/network-settings/firewall }
+      - { id: routing, title: Routing, href: /cgi-bin/luci/admin/advanced/network-settings/routing }
+      - { id: traffic, title: Traffic Control, href: /cgi-bin/luci/admin/advanced/network-settings/sqm }
+      - { id: diagnostics, title: Diagnostics, href: /cgi-bin/luci/admin/advanced/network-settings/diagnostics }
+      - { id: multiwan, title: Multi-WAN, href: /cgi-bin/luci/admin/advanced/network-settings/multiwan }
+      - { id: device-settings, title: Device Settings, href: /cgi-bin/luci/admin/advanced/administration/system }
+      - { id: admin-password, title: Administrator Account, href: /cgi-bin/luci/admin/advanced/administration/password }
+      - { id: admin-ssh, title: SSH Access, href: /cgi-bin/luci/admin/advanced/administration/ssh }
+      - { id: admin-sshkeys, title: SSH Keys, href: /cgi-bin/luci/admin/advanced/administration/sshkeys }
+      - { id: admin-web, title: Web Access, href: /cgi-bin/luci/admin/advanced/administration/web }
+      - { id: admin-startup, title: Startup & Services, href: /cgi-bin/luci/admin/advanced/administration/startup }
+      - { id: admin-scheduled, title: Scheduled Tasks, href: /cgi-bin/luci/admin/advanced/administration/scheduled }
+      - { id: admin-backup, title: Backup & Firmware, href: /cgi-bin/luci/admin/advanced/administration/backup }
+      - { id: health, title: System Health, href: /cgi-bin/luci/admin/advanced/system-health }
+      - { id: logs, title: System Log, href: /cgi-bin/luci/admin/advanced/system-log }
+      - { id: processes, title: Processes, href: /cgi-bin/luci/admin/advanced/processes }
+      - { id: support, title: Support, href: /cgi-bin/luci/admin/advanced/support }
+      - { id: terminal, title: Terminal, href: /cgi-bin/luci/admin/advanced/terminal }
+      - { id: packages, title: Package Manager, href: /cgi-bin/luci/admin/advanced/packages }
+      - { id: expert, title: Expert LuCI, href: /cgi-bin/luci/admin/advanced/expert/interfaces }
   - id: reboot
     title: Reboot
     href: /cgi-bin/luci/admin/reboot
