@@ -108,6 +108,9 @@ services:
   services:
     helper: /usr/libexec/mrouter-services
     mode: readwrite
+  terminal:
+    helper: /usr/libexec/mrouter-terminal
+    mode: readwrite
   advanced:
     helper: /usr/libexec/mrouter-advanced
     mode: readwrite
