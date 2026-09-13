@@ -1,9 +1,12 @@
 #!/bin/sh
-
+set -eu
 CFG=mrouterui
 SEC=appearance
-YAML=/etc/mrouter/ui.d/appearance.yaml
-JSON=/www/luci-static/mrouter-ui/user-config.json
+ROOT=/etc/mrouter/ui.d
+DEFAULT=/usr/share/mrouter/ui/defaults
+WEB=/www/luci-static/mrouter-ui
+AP_YAML=$ROOT/appearance.yaml
+AP_JSON=$WEB/user-config.json
 
 ensure(){
     uci -q get "$CFG.$SEC" >/dev/null 2>&1 || {
@@ -17,13 +20,12 @@ ensure(){
         uci set "$CFG.$SEC.compact_forms=1"
         uci commit "$CFG"
     }
-    mkdir -p /etc/mrouter/ui.d /www/luci-static/mrouter-ui
+    mkdir -p "$ROOT" "$WEB"
 }
-
 valid_hex(){ echo "$1" | grep -Eq '^#[0-9A-Fa-f]{6}$'; }
 valid_int(){ case "$1" in ''|*[!0-9]*) return 1;; esac; [ "$1" -ge "$2" ] && [ "$1" -le "$3" ]; }
 
-write_files(){
+write_appearance(){
     accent="$(uci -q get $CFG.$SEC.accent || echo '#007AFF')"
     density="$(uci -q get $CFG.$SEC.density || echo compact)"
     sidebar="$(uci -q get $CFG.$SEC.sidebar_width || echo 212)"
@@ -31,8 +33,8 @@ write_files(){
     form="$(uci -q get $CFG.$SEC.form_max_width || echo 360)"
     radius="$(uci -q get $CFG.$SEC.card_radius || echo 14)"
     compact="$(uci -q get $CFG.$SEC.compact_forms || echo 1)"
-
-    cat >"$YAML" <<EOF
+    cat >"$AP_YAML" <<EOF
+version: 1
 appearance:
   accent: "$accent"
   density: $density
@@ -42,36 +44,18 @@ appearance:
   card_radius: $radius
   compact_forms: $([ "$compact" = 1 ] && echo true || echo false)
 EOF
-
-    cat >"$JSON" <<EOF
-{
-  "version": 1,
-  "appearance": {
-    "accent": "$accent",
-    "density": "$density",
-    "sidebar_width": $sidebar,
-    "content_max_width": $content,
-    "form_max_width": $form,
-    "card_radius": $radius,
-    "compact_forms": $([ "$compact" = 1 ] && echo true || echo false)
-  }
-}
+    cat >"$AP_JSON" <<EOF
+{"version":1,"appearance":{"accent":"$accent","density":"$density","sidebar_width":$sidebar,"content_max_width":$content,"form_max_width":$form,"card_radius":$radius,"compact_forms":$([ "$compact" = 1 ] && echo true || echo false)}}
 EOF
 }
-
 status(){
-    ensure
-    write_files
+    ensure; write_appearance
     printf 'STATUS|%s|%s|%s|%s|%s|%s|%s\n' \
-      "$(uci -q get $CFG.$SEC.accent)" \
-      "$(uci -q get $CFG.$SEC.density)" \
-      "$(uci -q get $CFG.$SEC.sidebar_width)" \
-      "$(uci -q get $CFG.$SEC.content_max_width)" \
-      "$(uci -q get $CFG.$SEC.form_max_width)" \
-      "$(uci -q get $CFG.$SEC.card_radius)" \
+      "$(uci -q get $CFG.$SEC.accent)" "$(uci -q get $CFG.$SEC.density)" \
+      "$(uci -q get $CFG.$SEC.sidebar_width)" "$(uci -q get $CFG.$SEC.content_max_width)" \
+      "$(uci -q get $CFG.$SEC.form_max_width)" "$(uci -q get $CFG.$SEC.card_radius)" \
       "$(uci -q get $CFG.$SEC.compact_forms)"
 }
-
 set_values(){
     ensure
     accent="$1"; density="$2"; sidebar="$3"; content="$4"; form="$5"; radius="$6"; compact="$7"
@@ -82,30 +66,57 @@ set_values(){
     valid_int "$form" 220 640 || { echo 'ERROR|Form width must be 220-640'; exit 2; }
     valid_int "$radius" 0 28 || { echo 'ERROR|Card radius must be 0-28'; exit 2; }
     case "$compact" in 0|1) ;; *) echo 'ERROR|Invalid compact_forms'; exit 2;; esac
-
-    uci set "$CFG.$SEC.accent=$accent"
-    uci set "$CFG.$SEC.density=$density"
-    uci set "$CFG.$SEC.sidebar_width=$sidebar"
-    uci set "$CFG.$SEC.content_max_width=$content"
-    uci set "$CFG.$SEC.form_max_width=$form"
-    uci set "$CFG.$SEC.card_radius=$radius"
-    uci set "$CFG.$SEC.compact_forms=$compact"
-    uci commit "$CFG"
-    write_files
+    uci set "$CFG.$SEC.accent=$accent"; uci set "$CFG.$SEC.density=$density"
+    uci set "$CFG.$SEC.sidebar_width=$sidebar"; uci set "$CFG.$SEC.content_max_width=$content"
+    uci set "$CFG.$SEC.form_max_width=$form"; uci set "$CFG.$SEC.card_radius=$radius"
+    uci set "$CFG.$SEC.compact_forms=$compact"; uci commit "$CFG"; write_appearance
     echo 'OK|saved'
 }
 
-reset(){
-    uci -q delete "$CFG.$SEC"
-    uci commit "$CFG" 2>/dev/null || true
+kind_ok(){ case "$1" in pages|navigation|login) return 0;; *) return 1;; esac; }
+json_version(){ jsonfilter -i "$1" -e '@.version' 2>/dev/null || true; }
+validate_components(){
+    grep -o '"component"[[:space:]]*:[[:space:]]*"[^"]*"' "$1" 2>/dev/null | sed 's/.*"component"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/' | while read -r c; do
+        case "$c" in internet|clients|iot-clients|wireless|events|vpn-dashboard|openvpn|wireguard|tailscale|policy|local-services|adguard|ddns|parental|content-filter|ports|networks|dhcp-dns|firewall-modern|routing-modern|traffic-control|diagnostics-modern|multiwan|device-settings|admin-password|admin-ssh|admin-sshkeys|admin-web|admin-startup|admin-scheduled|admin-backup|health|logs-modern|processes-modern|support|terminal|packages-modern|ui-designer) :;; *) echo "ERROR|Unregistered component: $c"; exit 7;; esac
+    done
+}
+validate_navigation(){
+    grep -o '"href"[[:space:]]*:[[:space:]]*"[^"]*"' "$1" 2>/dev/null | sed 's/.*"href"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/' | while read -r h; do
+        case "$h" in /cgi-bin/luci/*) :;; *) echo "ERROR|Unsafe navigation href: $h"; exit 8;; esac
+    done
+}
+apply_doc(){
+    kind="$1"; kind_ok "$kind" || { echo 'ERROR|Unknown document'; exit 2; }
+    y="/tmp/mrouter-ui-$kind.yaml"; j="/tmp/mrouter-ui-$kind.json"
+    [ -s "$y" ] && [ -s "$j" ] || { echo 'ERROR|Editor staging files missing'; exit 2; }
+    [ "$(json_version "$j")" = 1 ] || { echo 'ERROR|JSON version must be 1'; exit 2; }
+    case "$kind" in pages) validate_components "$j";; navigation) validate_navigation "$j";; esac
+    cp "$y" "$ROOT/$kind.yaml"; cp "$j" "$ROOT/$kind.json"; cp "$j" "$WEB/user-$kind.json"
+    chmod 0644 "$ROOT/$kind.yaml" "$ROOT/$kind.json" "$WEB/user-$kind.json"
+    rm -f "$y" "$j"
+    echo "OK|$kind applied"
+}
+export_doc(){
+    kind="$1"; kind_ok "$kind" || { echo 'ERROR|Unknown document'; exit 2; }
     ensure
-    write_files
-    echo 'OK|reset'
+    if [ -s "$ROOT/$kind.yaml" ]; then cat "$ROOT/$kind.yaml"; elif [ -s "$DEFAULT/$kind.yaml" ]; then cat "$DEFAULT/$kind.yaml"; else echo 'ERROR|Default YAML missing'; exit 2; fi
+}
+reset_doc(){
+    kind="$1"; kind_ok "$kind" || { echo 'ERROR|Unknown document'; exit 2; }
+    rm -f "$ROOT/$kind.yaml" "$ROOT/$kind.json" "$WEB/user-$kind.json" "/tmp/mrouter-ui-$kind.yaml" "/tmp/mrouter-ui-$kind.json"
+    echo "OK|$kind reset"
+}
+reset_appearance(){
+    uci -q delete "$CFG.$SEC" || true; uci commit "$CFG" 2>/dev/null || true
+    rm -f "$AP_YAML" "$AP_JSON"; ensure; write_appearance; echo 'OK|reset'
 }
 
-case "$1" in
-    status|'') status ;;
+cmd="${1:-status}"
+case "$cmd" in
+    status) status ;;
     set) shift; [ "$#" -eq 7 ] || { echo 'ERROR|Expected 7 values'; exit 2; }; set_values "$@" ;;
-    reset) reset ;;
+    export) [ "$#" -eq 2 ] || { echo 'ERROR|Expected document name'; exit 2; }; export_doc "$2" ;;
+    apply) [ "$#" -eq 2 ] || { echo 'ERROR|Expected document name'; exit 2; }; ensure; apply_doc "$2" ;;
+    reset) if [ "$#" -eq 1 ]; then reset_appearance; else reset_doc "$2"; fi ;;
     *) echo 'ERROR|Unknown command'; exit 2 ;;
 esac
