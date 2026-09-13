@@ -35,7 +35,7 @@ validate_pages(){
         return 7
     fi
     grep -o '"service"[[:space:]]*:[[:space:]]*"[^"]*"' "$1" 2>/dev/null | sed 's/.*"service"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/' | while read -r s; do
-        case "$s" in internet|internet-summary|traffic|client-data|iot-info|clients|client-action|wireless|networks|events|wan|dhcp|firewall|support|adguard|status-adguard|tailscale|status-tailscale|wireguard|status-wireguard|wireguard-client|status-wireguard-client|openvpn|status-openvpn|policy|status-policy|ddns|status-ddns|ports|status-ports|parental|status-parental|content-filter|status-content-filter|status-health|services|terminal|advanced|ui-config|upload) :;; *) echo "ERROR|Unregistered service: $s"; exit 7;; esac
+        case "$s" in internet|internet-summary|traffic|client-data|iot-info|clients|client-action|wireless|networks|events|wan|dhcp|firewall|support|adguard|status-adguard|tailscale|status-tailscale|wireguard|status-wireguard|wireguard-client|status-wireguard-client|openvpn|status-openvpn|policy|status-policy|ddns|status-ddns|ports|status-ports|parental|status-parental|content-filter|status-content-filter|status-health|services|terminal|account|advanced|ui-config|upload) :;; *) echo "ERROR|Unregistered service: $s"; exit 7;; esac
     done
 }
 validate_navigation(){ grep -o '"href"[[:space:]]*:[[:space:]]*"[^"]*"' "$1" 2>/dev/null | sed 's/.*"href"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/' | while read -r h; do case "$h" in /cgi-bin/luci/*) :;; *) echo "ERROR|Unsafe navigation href: $h"; exit 8;; esac; done; }
