@@ -1,0 +1,35 @@
+/* Mrouter 1.1 layout safety fixes */
+.m-app-card,
+.m-section,
+.m-policy-form-grid,
+.m-policy-form-grid > *,
+.m-policy-form-grid label {
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.m-policy-form-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)) !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.m-policy-form-grid input,
+.m-policy-form-grid select,
+.m-policy-form-grid textarea,
+.m-policy-form-grid .m-ios-input {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+}
+
+.m-app-card {
+    overflow: hidden !important;
+}
+
+@media (max-width: 720px) {
+    .m-policy-form-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
