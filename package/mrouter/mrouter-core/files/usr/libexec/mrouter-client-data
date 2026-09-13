@@ -13,15 +13,38 @@ WANGW="$(ip -4 route show default 2>/dev/null | awk '/default/{for(i=1;i<=NF;i++
 [ -n "$IOTDEV" ] || IOTDEV="$(uci -q get network.iot.device || uci -q get network.iot.ifname || true)"
 [ -n "$WANDEV" ] || WANDEV="$(uci -q get network.wan.device || uci -q get network.wan.ifname || true)"
 wanted_dev(){ D="$1"; case "$ACTION" in snapshot|snapshot-lan) [ -n "$LANDEV" ] && [ "$D" = "$LANDEV" ];; snapshot-iot) [ -n "$IOTDEV" ] && [ "$D" = "$IOTDEV" ];; snapshot-all) [ "$D" != "$WANDEV" ];; esac; }
-ip -4 neigh show 2>/dev/null | while IFS= read -r LINE; do set -- $LINE; IP="$1"; MAC=''; DEV=''; PREV=''; for X in $LINE; do [ "$PREV" = lladdr ] && MAC="$X"; [ "$PREV" = dev ] && DEV="$X"; PREV="$X"; done; STATE="$(printf '%s\n' "$LINE"|awk '{print $NF}')"; [ -n "$MAC" ] || continue; wanted_dev "$DEV" || continue; [ "$IP" = "$LANIP" ] && continue; [ "$IP" = "$IOTIP" ] && continue; [ "$IP" = "$WANGW" ] && continue; printf 'N|%s|%s|%s|%s\n' "$IP" "$(printf '%s' "$MAC"|tr 'a-f' 'A-F')" "$STATE" "$DEV"; done
-[ -r /tmp/dhcp.leases ] && awk '{if(NF>=4&&$2!=""&&$4!=""&&$4!="*")printf "H|%s|%s\n",toupper($2),$4}' /tmp/dhcp.leases
-for S in $(uci show dhcp 2>/dev/null|sed -n 's/^dhcp\.\([^.=]*\)=host$/\1/p'); do MAC="$(uci -q get dhcp.$S.mac || true)"; NAME="$(uci -q get dhcp.$S.name || true)"; IP="$(uci -q get dhcp.$S.ip || true)"; [ -n "$MAC" ] || continue; [ -n "$NAME" ] || NAME="$IP"; [ -n "$NAME" ] && printf 'H|%s|%s\n' "$(printf '%s' "$MAC"|tr 'a-f' 'A-F')" "$(printf '%s' "$NAME"|tr '|\r\n' '   ')"; done
+valid_mac(){ printf '%s\n' "$1" | grep -Eqi '^([0-9a-f]{2}:){5}[0-9a-f]{2}$' && [ "$(printf '%s' "$1" | tr 'a-f' 'A-F')" != '00:00:00:00:00:00' ]; }
+TMP="/tmp/mrouter-client-data.$$"
+trap 'rm -f "$TMP"' EXIT INT TERM
+: >"$TMP"
+ip -4 neigh show 2>/dev/null | while IFS= read -r LINE; do
+  set -- $LINE; IP="$1"; MAC=''; DEV=''; PREV=''
+  for X in $LINE; do [ "$PREV" = lladdr ] && MAC="$X"; [ "$PREV" = dev ] && DEV="$X"; PREV="$X"; done
+  STATE="$(printf '%s\n' "$LINE"|awk '{print $NF}')"
+  [ -n "$MAC" ] || continue
+  valid_mac "$MAC" || continue
+  wanted_dev "$DEV" || continue
+  [ "$IP" = "$LANIP" ] && continue
+  [ "$IP" = "$IOTIP" ] && continue
+  [ "$IP" = "$WANGW" ] && continue
+  MACU="$(printf '%s' "$MAC"|tr 'a-f' 'A-F')"
+  printf 'N|%s|%s|%s|%s\n' "$IP" "$MACU" "$STATE" "$DEV"
+  printf '%s\n' "$MACU" >>"$TMP"
+done
+seen(){ grep -Fxq "$(printf '%s' "$1" | tr 'a-f' 'A-F')" "$TMP" 2>/dev/null; }
+[ -r /tmp/dhcp.leases ] && awk '{if(NF>=4&&$2!=""&&$4!=""&&$4!="*")printf "%s|%s\n",toupper($2),$4}' /tmp/dhcp.leases | while IFS='|' read -r MAC NAME; do seen "$MAC" && printf 'H|%s|%s\n' "$MAC" "$(printf '%s' "$NAME"|tr '|\r\n' '   ')"; done
+for S in $(uci show dhcp 2>/dev/null|sed -n 's/^dhcp\.\([^.=]*\)=host$/\1/p'); do
+  MAC="$(uci -q get dhcp.$S.mac || true)"; NAME="$(uci -q get dhcp.$S.name || true)"; IP="$(uci -q get dhcp.$S.ip || true)"
+  [ -n "$MAC" ] || continue; valid_mac "$MAC" || continue; seen "$MAC" || continue
+  MACU="$(printf '%s' "$MAC"|tr 'a-f' 'A-F')"
+  [ -n "$NAME" ] && printf 'H|%s|%s\n' "$MACU" "$(printf '%s' "$NAME"|tr '|\r\n' '   ')"
+  OWN=0; case "$S" in mrouter_reserve_*) OWN=1;; esac
+  [ -n "$IP" ] && printf 'R|%s|%s|%s\n' "$MACU" "$IP" "$OWN"
+done
 if [ -x /usr/sbin/nlbw ]; then /usr/sbin/nlbw -c csv -g mac -o mac -s'|' -q 2>/dev/null | awk -F'|' 'NR>1&&NF>=6{gsub(/"/,"",$1);gsub(/"/,"",$3);gsub(/"/,"",$5);printf "B|%s|%s|%s\n",toupper($1),$3,$5}'; fi
-# Real Wi-Fi association marker. No guessed wireless clients.
 if command -v iwinfo >/dev/null 2>&1; then
   for IF in $(iwinfo 2>/dev/null | awk '/ESSID:/{print $1}'); do
     iwinfo "$IF" assoclist 2>/dev/null | awk -v i="$IF" '/^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}[[:space:]]/{printf "W|%s|%s\n",toupper($1),i}'
   done
 fi
-for S in $(uci show firewall 2>/dev/null|sed -n 's/^firewall\.\([^.=]*\)=rule$/\1/p'); do NAME="$(uci -q get firewall.$S.name || true)"; case "$NAME" in "Mrouter block "*) MAC="$(uci -q get firewall.$S.src_mac || true)"; [ -n "$MAC" ] && echo "X|$(printf '%s' "$MAC"|tr 'a-f' 'A-F')";; esac; done
-for S in $(uci show dhcp 2>/dev/null|sed -n 's/^dhcp\.\([^.=]*\)=host$/\1/p'); do MAC="$(uci -q get dhcp.$S.mac || true)"; IP="$(uci -q get dhcp.$S.ip || true)"; [ -n "$MAC" ]&&[ -n "$IP" ]&&echo "R|$(printf '%s' "$MAC"|tr 'a-f' 'A-F')|$IP"; done
+for S in $(uci show firewall 2>/dev/null|sed -n 's/^firewall\.\([^.=]*\)=rule$/\1/p'); do NAME="$(uci -q get firewall.$S.name || true)"; case "$NAME" in "Mrouter block "*) MAC="$(uci -q get firewall.$S.src_mac || true)"; [ -n "$MAC" ] && seen "$MAC" && echo "X|$(printf '%s' "$MAC"|tr 'a-f' 'A-F')";; esac; done
