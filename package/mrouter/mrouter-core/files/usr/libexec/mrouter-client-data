@@ -1,8 +1,7 @@
 #!/bin/sh
 ACTION="${1:-snapshot}"
-case "$ACTION" in snapshot|snapshot-lan|snapshot-iot|snapshot-all) ;; *) exit 1 ;; esac
+case "$ACTION" in snapshot|snapshot-lan|snapshot-iot|snapshot-all) ;; *) exit 1;; esac
 . /lib/functions/network.sh 2>/dev/null || true
-
 LANDEV=''; IOTDEV=''; WANDEV=''; LANIP=''; IOTIP=''; WANGW=''
 network_get_device LANDEV lan 2>/dev/null || true
 network_get_device IOTDEV iot 2>/dev/null || true
@@ -13,60 +12,16 @@ WANGW="$(ip -4 route show default 2>/dev/null | awk '/default/{for(i=1;i<=NF;i++
 [ -n "$LANDEV" ] || LANDEV="$(uci -q get network.lan.device || uci -q get network.lan.ifname || true)"
 [ -n "$IOTDEV" ] || IOTDEV="$(uci -q get network.iot.device || uci -q get network.iot.ifname || true)"
 [ -n "$WANDEV" ] || WANDEV="$(uci -q get network.wan.device || uci -q get network.wan.ifname || true)"
-
-wanted_dev() {
-    D="$1"
-    case "$ACTION" in
-      snapshot|snapshot-lan) [ -n "$LANDEV" ] && [ "$D" = "$LANDEV" ] ;;
-      snapshot-iot) [ -n "$IOTDEV" ] && [ "$D" = "$IOTDEV" ] ;;
-      snapshot-all) [ "$D" != "$WANDEV" ] ;;
-    esac
-}
-
-# Active neighbours, restricted to the requested trusted network. Never expose
-# the WAN gateway/router as a LAN client.
-ip -4 neigh show 2>/dev/null | while IFS= read -r LINE; do
-    set -- $LINE
-    IP="$1"; MAC=''; DEV=''; STATE=''
-    PREV=''
-    for X in $LINE; do
-        [ "$PREV" = lladdr ] && MAC="$X"
-        [ "$PREV" = dev ] && DEV="$X"
-        PREV="$X"
-    done
-    STATE="$(printf '%s\n' "$LINE" | awk '{print $NF}')"
-    [ -n "$MAC" ] || continue
-    wanted_dev "$DEV" || continue
-    [ "$IP" = "$LANIP" ] && continue
-    [ "$IP" = "$IOTIP" ] && continue
-    [ "$IP" = "$WANGW" ] && continue
-    printf 'N|%s|%s|%s|%s\n' "$IP" "$(printf '%s' "$MAC" | tr 'a-f' 'A-F')" "$STATE" "$DEV"
-done
-
-# Names from live DHCP leases.
-[ -r /tmp/dhcp.leases ] && awk '{ if (NF >= 4 && $2 != "" && $4 != "" && $4 != "*") printf "H|%s|%s\n", toupper($2), $4 }' /tmp/dhcp.leases
-
-# Names from static DHCP reservations.
-for S in $(uci show dhcp 2>/dev/null | sed -n 's/^dhcp\.\([^.=]*\)=host$/\1/p'); do
-    MAC="$(uci -q get dhcp.$S.mac || true)"; NAME="$(uci -q get dhcp.$S.name || true)"; IP="$(uci -q get dhcp.$S.ip || true)"
-    [ -n "$MAC" ] || continue
-    [ -n "$NAME" ] || NAME="$IP"
-    [ -n "$NAME" ] && printf 'H|%s|%s\n' "$(printf '%s' "$MAC" | tr 'a-f' 'A-F')" "$(printf '%s' "$NAME" | tr '|\r\n' '   ')"
-done
-
-# Bandwidth counters.
-if [ -x /usr/sbin/nlbw ]; then
-    /usr/sbin/nlbw -c csv -g mac -o mac -s '|' -q 2>/dev/null | awk -F'|' 'NR > 1 && NF >= 6 { printf "B|%s|%s|%s\n", toupper($1), $3, $5 }'
+wanted_dev(){ D="$1"; case "$ACTION" in snapshot|snapshot-lan) [ -n "$LANDEV" ] && [ "$D" = "$LANDEV" ];; snapshot-iot) [ -n "$IOTDEV" ] && [ "$D" = "$IOTDEV" ];; snapshot-all) [ "$D" != "$WANDEV" ];; esac; }
+ip -4 neigh show 2>/dev/null | while IFS= read -r LINE; do set -- $LINE; IP="$1"; MAC=''; DEV=''; PREV=''; for X in $LINE; do [ "$PREV" = lladdr ] && MAC="$X"; [ "$PREV" = dev ] && DEV="$X"; PREV="$X"; done; STATE="$(printf '%s\n' "$LINE"|awk '{print $NF}')"; [ -n "$MAC" ] || continue; wanted_dev "$DEV" || continue; [ "$IP" = "$LANIP" ] && continue; [ "$IP" = "$IOTIP" ] && continue; [ "$IP" = "$WANGW" ] && continue; printf 'N|%s|%s|%s|%s\n' "$IP" "$(printf '%s' "$MAC"|tr 'a-f' 'A-F')" "$STATE" "$DEV"; done
+[ -r /tmp/dhcp.leases ] && awk '{if(NF>=4&&$2!=""&&$4!=""&&$4!="*")printf "H|%s|%s\n",toupper($2),$4}' /tmp/dhcp.leases
+for S in $(uci show dhcp 2>/dev/null|sed -n 's/^dhcp\.\([^.=]*\)=host$/\1/p'); do MAC="$(uci -q get dhcp.$S.mac || true)"; NAME="$(uci -q get dhcp.$S.name || true)"; IP="$(uci -q get dhcp.$S.ip || true)"; [ -n "$MAC" ] || continue; [ -n "$NAME" ] || NAME="$IP"; [ -n "$NAME" ] && printf 'H|%s|%s\n' "$(printf '%s' "$MAC"|tr 'a-f' 'A-F')" "$(printf '%s' "$NAME"|tr '|\r\n' '   ')"; done
+if [ -x /usr/sbin/nlbw ]; then /usr/sbin/nlbw -c csv -g mac -o mac -s'|' -q 2>/dev/null | awk -F'|' 'NR>1&&NF>=6{gsub(/"/,"",$1);gsub(/"/,"",$3);gsub(/"/,"",$5);printf "B|%s|%s|%s\n",toupper($1),$3,$5}'; fi
+# Real Wi-Fi association marker. No guessed wireless clients.
+if command -v iwinfo >/dev/null 2>&1; then
+  for IF in $(iwinfo 2>/dev/null | awk '/ESSID:/{print $1}'); do
+    iwinfo "$IF" assoclist 2>/dev/null | awk -v i="$IF" '/^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}[[:space:]]/{printf "W|%s|%s\n",toupper($1),i}'
+  done
 fi
-
-# Blocked MACs.
-for S in $(uci show firewall 2>/dev/null | sed -n 's/^firewall\.\([^.=]*\)=rule$/\1/p'); do
-    NAME="$(uci -q get firewall.$S.name || true)"
-    case "$NAME" in "Mrouter block "*) MAC="$(uci -q get firewall.$S.src_mac || true)"; [ -n "$MAC" ] && echo "X|$(printf '%s' "$MAC" | tr 'a-f' 'A-F')" ;; esac
-done
-
-# DHCP reservations.
-for S in $(uci show dhcp 2>/dev/null | sed -n 's/^dhcp\.\([^.=]*\)=host$/\1/p'); do
-    MAC="$(uci -q get dhcp.$S.mac || true)"; IP="$(uci -q get dhcp.$S.ip || true)"
-    [ -n "$MAC" ] && [ -n "$IP" ] && echo "R|$(printf '%s' "$MAC" | tr 'a-f' 'A-F')|$IP"
-done
+for S in $(uci show firewall 2>/dev/null|sed -n 's/^firewall\.\([^.=]*\)=rule$/\1/p'); do NAME="$(uci -q get firewall.$S.name || true)"; case "$NAME" in "Mrouter block "*) MAC="$(uci -q get firewall.$S.src_mac || true)"; [ -n "$MAC" ] && echo "X|$(printf '%s' "$MAC"|tr 'a-f' 'A-F')";; esac; done
+for S in $(uci show dhcp 2>/dev/null|sed -n 's/^dhcp\.\([^.=]*\)=host$/\1/p'); do MAC="$(uci -q get dhcp.$S.mac || true)"; IP="$(uci -q get dhcp.$S.ip || true)"; [ -n "$MAC" ]&&[ -n "$IP" ]&&echo "R|$(printf '%s' "$MAC"|tr 'a-f' 'A-F')|$IP"; done
