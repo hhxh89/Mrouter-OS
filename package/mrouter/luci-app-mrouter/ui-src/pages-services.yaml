@@ -16,10 +16,10 @@ pages:
     - type: form
       title: Add Local Service
       fields:
-      - { id: type, type: text, label: Type, placeholder: app }
+      - { id: type, type: select, label: Type, options: [pihole, homeassistant, proxmox, immich, jellyfin, plex, truenas, synology, openmediavault, portainer, grafana, custom] }
       - { id: name, type: text, label: Name }
       - { id: host, type: text, label: Host / IP }
-      - { id: port, type: number, label: Port }
+      - { id: port, type: number, label: Port, default: 80 }
       - { id: scheme, type: select, label: Scheme, options: [http, https] }
       actions:
       - { label: Add Service, service: services, action: add, args: [$field.type, $field.name, $field.host, $field.port, $field.scheme], style: primary, reload: true }
@@ -43,7 +43,7 @@ pages:
       title: DDNS Services
       source: status
       tags: [SERVICE]
-      columns: [ID, Provider, Hostname, Enabled, Last IP, Last update/result]
+      columns: [ID, Enabled, Provider, Hostname, Username, Last update state]
       row_actions:
       - { label: Enable, service: ddns, action: toggle, args: [$row.0, '1'], style: primary, reload: true }
       - { label: Disable, service: ddns, action: toggle, args: [$row.0, '0'], style: secondary, reload: true }
