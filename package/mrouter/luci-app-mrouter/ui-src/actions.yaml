@@ -6,6 +6,12 @@ services:
   traffic:
     helper: /usr/libexec/mrouter-traffic-live
     mode: read
+  client-data:
+    helper: /usr/libexec/mrouter-client-data
+    mode: read
+  iot-info:
+    helper: /usr/libexec/mrouter-iot-info
+    mode: read
   clients:
     helper: /usr/libexec/mrouter-clients
     mode: readwrite
@@ -36,33 +42,66 @@ services:
   adguard:
     helper: /usr/libexec/mrouter-adguard
     mode: readwrite
+  status-adguard:
+    helper: /usr/libexec/mrouter-status-adguard
+    mode: read
   tailscale:
     helper: /usr/libexec/mrouter-tailscale
     mode: readwrite
+  status-tailscale:
+    helper: /usr/libexec/mrouter-status-tailscale
+    mode: read
   wireguard:
     helper: /usr/libexec/mrouter-wireguard
     mode: readwrite
+  status-wireguard:
+    helper: /usr/libexec/mrouter-status-wireguard
+    mode: read
   wireguard-client:
     helper: /usr/libexec/mrouter-wireguard-client
     mode: readwrite
+  status-wireguard-client:
+    helper: /usr/libexec/mrouter-status-wireguard-client
+    mode: read
   openvpn:
     helper: /usr/libexec/mrouter-openvpn
     mode: readwrite
+  status-openvpn:
+    helper: /usr/libexec/mrouter-status-openvpn
+    mode: read
   policy:
     helper: /usr/libexec/mrouter-policy
     mode: readwrite
+  status-policy:
+    helper: /usr/libexec/mrouter-status-policy
+    mode: read
   ddns:
     helper: /usr/libexec/mrouter-ddns
     mode: readwrite
+  status-ddns:
+    helper: /usr/libexec/mrouter-status-ddns
+    mode: read
   ports:
     helper: /usr/libexec/mrouter-ports
     mode: readwrite
+  status-ports:
+    helper: /usr/libexec/mrouter-status-ports
+    mode: read
   parental:
     helper: /usr/libexec/mrouter-parental
     mode: readwrite
+  status-parental:
+    helper: /usr/libexec/mrouter-status-parental
+    mode: read
   content-filter:
     helper: /usr/libexec/mrouter-content-filter
     mode: readwrite
+  status-content-filter:
+    helper: /usr/libexec/mrouter-status-content-filter
+    mode: read
+  status-health:
+    helper: /usr/libexec/mrouter-status-health
+    mode: read
   services:
     helper: /usr/libexec/mrouter-services
     mode: readwrite
