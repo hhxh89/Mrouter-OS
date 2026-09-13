@@ -28,8 +28,81 @@
     overflow: hidden !important;
 }
 
+/* DHCP page uses its own strict grid so scope fields never overflow cards. */
+.m-dhcp-scope-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+}
+
+.m-dhcp-scope-head {
+    gap: 12px !important;
+    align-items: center !important;
+}
+
+.m-dhcp-scope-title {
+    min-width: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2px !important;
+}
+
+.m-dhcp-scope-title strong,
+.m-dhcp-scope-title span {
+    display: block !important;
+}
+
+.m-dhcp-scope-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 12px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    margin-top: 14px !important;
+}
+
+.m-dhcp-scope-grid > *,
+.m-dhcp-scope-grid label {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.m-dhcp-scope-grid label {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+}
+
+.m-dhcp-scope-grid input,
+.m-dhcp-scope-grid select,
+.m-dhcp-scope-grid textarea,
+.m-dhcp-scope-grid .m-ios-input {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+}
+
+.m-dhcp-scope-actions {
+    margin-top: 14px !important;
+}
+
+@media (max-width: 900px) {
+    .m-dhcp-scope-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+}
+
 @media (max-width: 720px) {
-    .m-policy-form-grid {
+    .m-policy-form-grid,
+    .m-dhcp-scope-grid {
         grid-template-columns: 1fr !important;
     }
 }
