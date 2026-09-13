@@ -28,6 +28,19 @@
     overflow: hidden !important;
 }
 
+/* Keep the desktop navigation interactive even if Material's mobile mask state is toggled. */
+@media (min-width: 851px) {
+    #mainmenu,
+    .main-left {
+        pointer-events: auto !important;
+    }
+
+    .darkMask {
+        display: none !important;
+        pointer-events: none !important;
+    }
+}
+
 /* DHCP page uses its own strict grid so scope fields never overflow cards. */
 .m-dhcp-scope-card {
     width: 100% !important;
