@@ -14,12 +14,38 @@ VIEWS=ROOT/'package/mrouter/luci-app-mrouter/htdocs/luci-static/resources/view/m
 MENU=ROOT/'package/mrouter/luci-app-mrouter/root/usr/share/luci/menu.d/zz-mrouter-yaml.json'
 DEFAULTS=ROOT/'package/mrouter/luci-app-mrouter/root/usr/share/mrouter/ui/defaults'
 DOCS=['appearance','navigation','pages','login','actions','schema']
+PAGE_OVERLAY_GLOB='pages-*.yaml'
 
 def load(name):
     p=SRC/(name+'.yaml')
     with p.open(encoding='utf-8') as f: data=yaml.safe_load(f)
     if not isinstance(data,dict) or data.get('version') != 1: raise SystemExit(f'{p}: version: 1 is required')
     return data
+
+def load_yaml_file(p):
+    with p.open(encoding='utf-8') as f: data=yaml.safe_load(f)
+    if not isinstance(data,dict) or data.get('version') != 1:
+        raise SystemExit(f'{p}: version: 1 is required')
+    return data
+
+def deep_merge(base, patch):
+    if isinstance(base,dict) and isinstance(patch,dict):
+        out=dict(base)
+        for k,v in patch.items():
+            out[k]=deep_merge(out[k],v) if k in out else v
+        return out
+    return patch
+
+def apply_page_overlays(pages):
+    merged={'version':pages.get('version',1),'pages':dict(pages.get('pages') or {})}
+    for p in sorted(SRC.glob(PAGE_OVERLAY_GLOB)):
+        # pages.yaml itself does not match this glob; every overlay is explicit YAML.
+        data=load_yaml_file(p)
+        for pid,patch in (data.get('pages') or {}).items():
+            if pid not in merged['pages']:
+                raise SystemExit(f'{p}: unknown page id {pid}')
+            merged['pages'][pid]=deep_merge(merged['pages'][pid],patch)
+    return merged
 
 def dump_json(path,obj):
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -77,17 +103,21 @@ def wrapper(pid):
 
 def main():
     docs={n:load(n) for n in DOCS}
+    docs['pages']=apply_page_overlays(docs['pages'])
     pages=docs['pages']
     validate_ids(pages,docs['actions'],docs['schema'])
     WEB.mkdir(parents=True,exist_ok=True); VIEWS.mkdir(parents=True,exist_ok=True); MENU.parent.mkdir(parents=True,exist_ok=True); DEFAULTS.mkdir(parents=True,exist_ok=True)
     for n,obj in docs.items(): dump_json(WEB/(n+'.json'),obj)
     for n in DOCS: (DEFAULTS/(n+'.yaml')).write_text((SRC/(n+'.yaml')).read_text(encoding='utf-8'),encoding='utf-8')
+    for p in sorted(SRC.glob(PAGE_OVERLAY_GLOB)):
+        (DEFAULTS/p.name).write_text(p.read_text(encoding='utf-8'),encoding='utf-8')
     for old in VIEWS.glob('*.js'): old.unlink()
     menu={}
     for pid,p in pages['pages'].items():
         menu[p['route']]={'title':p.get('title',pid),'order':p.get('order',50),'action':{'type':'view','path':'mrouter-yaml/'+pid},'depends':{'acl':['mrouter-ui']}}
         (VIEWS/(pid+'.js')).write_text(wrapper(pid),encoding='utf-8')
     dump_json(MENU,menu)
-    print(f'Mrouter UI YAML compiled: {len(pages["pages"])} native pages, {len(menu)} YAML routes, 0 legacy blocks')
+    overlays=len(list(SRC.glob(PAGE_OVERLAY_GLOB)))
+    print(f'Mrouter UI YAML compiled: {len(pages["pages"])} native pages, {len(menu)} YAML routes, {overlays} modular page overlays, 0 legacy blocks')
 
 if __name__=='__main__': main()
