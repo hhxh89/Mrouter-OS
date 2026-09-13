@@ -37,6 +37,62 @@ processes(){ ps w 2>/dev/null | head -n 250; }
 packages(){ apk list --installed 2>/dev/null | head -n 500; }
 keys(){ F='/etc/dropbear/authorized_keys'; C=0; [ -r "$F" ] && C="$(grep -cv '^[[:space:]]*\(#\|$\)' "$F" 2>/dev/null || echo 0)"; printf 'KEYS|%s\n' "$C"; }
 
+password_set(){
+    P="${2:-}"
+    [ ${#P} -ge 8 ] || { echo 'Password must be at least 8 characters' >&2; exit 1; }
+    case "$P" in *$'\n'*|*$'\r'*) echo 'Invalid password' >&2; exit 1;; esac
+    printf '%s\n%s\n' "$P" "$P" | passwd root >/dev/null 2>&1 || { echo 'Unable to change root password' >&2; exit 1; }
+    echo 'OK|Password updated'
+}
+key_list(){
+    F='/etc/dropbear/authorized_keys'; I=0
+    [ -r "$F" ] || { echo 'KEYS|0'; return 0; }
+    while IFS= read -r L; do
+        case "$L" in ''|'#'*) continue;; esac
+        I=$((I+1)); TYPE="${L%% *}"; REST="${L#* }"; COMMENT="${REST#* }"; [ "$COMMENT" = "$REST" ] && COMMENT='';
+        printf 'KEY|%s|%s|%s\n' "$I" "$(esc "$TYPE")" "$(esc "$COMMENT")"
+    done < "$F"
+    printf 'KEYS|%s\n' "$I"
+}
+key_add(){
+    K="${2:-}"; case "$K" in ssh-ed25519\ *|ssh-rsa\ *|ecdsa-sha2-*\ *|sk-ssh-ed25519@openssh.com\ *) ;; *) echo 'Unsupported public key format' >&2; exit 1;; esac
+    printf '%s' "$K" | grep -q '[\r\n]' && { echo 'Invalid public key' >&2; exit 1; } || true
+    mkdir -p /etc/dropbear; touch /etc/dropbear/authorized_keys; chmod 600 /etc/dropbear/authorized_keys
+    grep -Fxq -- "$K" /etc/dropbear/authorized_keys 2>/dev/null || printf '%s\n' "$K" >> /etc/dropbear/authorized_keys
+    key_list
+}
+key_delete(){
+    N="${2:-}"; case "$N" in ''|*[!0-9]*) exit 1;; esac; [ "$N" -ge 1 ] || exit 1
+    F='/etc/dropbear/authorized_keys'; [ -f "$F" ] || exit 1; T="$F.mrouter.$$"; awk -v n="$N" 'BEGIN{i=0} /^[[:space:]]*($|#)/{print;next} {i++; if(i!=n) print}' "$F" > "$T" || exit 1; chmod 600 "$T"; mv "$T" "$F"; key_list
+}
+web_save(){
+    HP="${2:-80}"; SP="${3:-443}"; RED="${4:-0}"; case "$HP:$SP" in *[!0-9:]*) echo 'Invalid web port' >&2; exit 1;; esac
+    [ "$HP" -ge 1 ]&&[ "$HP" -le 65535 ]&&[ "$SP" -ge 1 ]&&[ "$SP" -le 65535 ] || exit 1
+    [ "$HP" != "$SP" ] || { echo 'HTTP and HTTPS ports must differ' >&2; exit 1; }; [ "$RED" = 1 ] || RED=0
+    uci -q delete uhttpd.main.listen_http; uci -q delete uhttpd.main.listen_https
+    uci add_list "uhttpd.main.listen_http=0.0.0.0:$HP"; uci add_list "uhttpd.main.listen_http=[::]:$HP"
+    uci add_list "uhttpd.main.listen_https=0.0.0.0:$SP"; uci add_list "uhttpd.main.listen_https=[::]:$SP"
+    uci set "uhttpd.main.redirect_https=$RED"; uci commit uhttpd; /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
+    snapshot
+}
+route_add(){
+    IF="${2:-wan}"; TARGET="${3:-}"; MASK="${4:-}"; GW="${5:-}"; MET="${6:-}"
+    printf '%s' "$IF"|grep -Eq '^[A-Za-z0-9_]+$' || exit 1; [ -n "$TARGET" ] || { echo 'Target required' >&2; exit 1; }
+    printf '%s' "$TARGET"|grep -Eq '^[0-9A-Fa-f:.]+(/[0-9]{1,3})?$' || { echo 'Invalid target' >&2; exit 1; }
+    [ -z "$MASK" ] || printf '%s' "$MASK"|grep -Eq '^[0-9.]+$' || exit 1; [ -z "$GW" ] || printf '%s' "$GW"|grep -Eq '^[0-9A-Fa-f:.]+$' || exit 1
+    S="mrouter_route_$(date +%s)_$$"; uci set "network.$S=route"; uci set "network.$S.interface=$IF"; uci set "network.$S.target=$TARGET"; [ -n "$MASK" ]&&uci set "network.$S.netmask=$MASK"; [ -n "$GW" ]&&uci set "network.$S.gateway=$GW"; [ -n "$MET" ]&&uci set "network.$S.metric=$MET"; uci set "network.$S.mrouter_managed=1"; uci commit network; /etc/init.d/network reload >/dev/null 2>&1 || true; snapshot
+}
+route_delete(){
+    S="${2:-}"; printf '%s' "$S"|grep -Eq '^[A-Za-z0-9_]+$' || exit 1; [ "$(uci -q get network.$S.mrouter_managed)" = 1 ] || { echo 'Only Mrouter-created routes can be deleted here' >&2; exit 1; }; uci -q delete "network.$S"; uci commit network; /etc/init.d/network reload >/dev/null 2>&1 || true; snapshot
+}
+pkg_refresh(){ apk update; }
+pkg_install(){ P="${2:-}"; printf '%s' "$P"|grep -Eq '^[A-Za-z0-9+_.@-]+$' || exit 1; apk add "$P"; }
+pkg_remove(){ P="${2:-}"; printf '%s' "$P"|grep -Eq '^[A-Za-z0-9+_.@-]+$' || exit 1; apk del "$P"; }
+pkg_upgrade(){ P="${2:-}"; printf '%s' "$P"|grep -Eq '^[A-Za-z0-9+_.@-]+$' || exit 1; apk upgrade "$P"; }
+backup_create(){
+    F="/tmp/mrouter-backup-$(date +%Y%m%d-%H%M%S).tar.gz"; if command -v sysupgrade >/dev/null 2>&1; then sysupgrade -b "$F" >/dev/null 2>&1 || exit 1; else tar -czf "$F" /etc/config /etc/mrouter 2>/dev/null || exit 1; fi; chmod 600 "$F"; printf 'FILE|%s\n' "$F"
+}
+
 case "$ACTION" in
  snapshot) snapshot ;;
  sqm-save) sqm_save "$@" ;;
@@ -47,6 +103,17 @@ case "$ACTION" in
  logs) logs "$@" ;;
  processes) processes ;;
  packages) packages ;;
- keys) keys ;;
- *) echo 'Usage: mrouter-advanced {snapshot|sqm-save|system-save|ssh-save|service-action|diagnostics|logs|processes|packages|keys}' >&2; exit 2;;
+ keys) key_list ;;
+ password-set) password_set "$@" ;;
+ key-add) key_add "$@" ;;
+ key-delete) key_delete "$@" ;;
+ web-save) web_save "$@" ;;
+ route-add) route_add "$@" ;;
+ route-delete) route_delete "$@" ;;
+ pkg-refresh) pkg_refresh ;;
+ pkg-install) pkg_install "$@" ;;
+ pkg-remove) pkg_remove "$@" ;;
+ pkg-upgrade) pkg_upgrade "$@" ;;
+ backup-create) backup_create ;;
+ *) echo 'Usage: mrouter-advanced {snapshot|sqm-save|system-save|ssh-save|service-action|diagnostics|logs|processes|packages|keys|password-set|key-add|key-delete|web-save|route-add|route-delete|pkg-refresh|pkg-install|pkg-remove|pkg-upgrade|backup-create}' >&2; exit 2;;
 esac
