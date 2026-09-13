@@ -69,6 +69,9 @@ navigation:
     title: Advanced
     order: 90
     children:
+      - id: ui-designer
+        title: UI Designer
+        href: /cgi-bin/luci/admin/advanced/ui-designer
       - id: network-settings
         title: Network Settings
         href: /cgi-bin/luci/admin/advanced/network-settings/interfaces
