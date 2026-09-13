@@ -11,18 +11,18 @@ pages:
       wan: { service: wan, action: status, parser: pipe }
       traffic: { service: traffic, action: status, parser: pipe }
     layout:
-      - type: json
-        title: Connection Overview
-        source: internet
-        fields: [online, public_ip, local_ip, gateway, interface, type, dns, uptime_seconds]
-        labels: { online: Online, public_ip: Public IP, local_ip: WAN IP, gateway: Gateway, interface: Interface, type: Connection type, dns: DNS, uptime_seconds: Uptime seconds }
-        array: ports
-      - type: records
-        title: WAN Quality & Multi-WAN
-        source: wan
-      - type: records
-        title: Live Traffic Counters
-        source: traffic
+      - { type: topology, title: Network Topology, source: internet }
+      - type: stats
+        items:
+          - { label: Public IP, value_from: internet.public_ip }
+          - { label: WAN IP, value_from: internet.local_ip }
+          - { label: Gateway, value_from: internet.gateway }
+          - { label: Interface, value_from: internet.interface }
+          - { label: DNS, value_from: internet.dns }
+          - { label: Connection type, value_from: internet.type }
+      - { type: port-grid, title: Physical Ports, source: internet }
+      - { type: records, title: WAN Quality & Multi-WAN, source: wan }
+      - { type: records, title: Live Traffic Counters, source: traffic }
 
   clients:
     route: admin/connected
@@ -32,32 +32,24 @@ pages:
     renderer: yaml
     sources:
       clients: { service: client-data, action: snapshot, parser: pipe }
-      metadata: { service: clients, action: status, parser: pipe }
+      metadata: { service: clients, action: status, parser: pipe, fields: [quarantine_new] }
     layout:
-      - type: records
-        title: Connected Clients
-        source: clients
-      - type: records
-        title: Names, Groups & Quarantine
-        source: metadata
+      - { type: client-list, title: LAN Clients, source: clients, scope: lan }
       - type: form
-        title: Client Action
+        title: New-device protection
         fields:
-          - { id: action, type: select, label: Action, options: [{value: block, label: Block / unblock}, {value: reserve, label: Reserve / release IP}] }
-          - { id: mac, type: text, label: MAC address, placeholder: 'AA:BB:CC:DD:EE:FF' }
-          - { id: enabled, type: toggle, label: Enable action, default: true }
-          - { id: ip, type: text, label: Current IP }
-          - { id: name, type: text, label: Device name }
+          - { id: enabled, type: toggle, label: Quarantine newly discovered clients, default_from: metadata.quarantine_new }
         actions:
-          - { label: Apply Client Action, service: client-action, action: '$field.action', args: ['$field.mac', '$field.enabled', '$field.ip', '$field.name', lan], style: primary, reload: true }
+          - { label: Save Protection, service: clients, action: quarantine, args: ['$field.enabled'], style: primary, reload: true }
       - type: form
         title: Friendly Name / Group
         fields:
-          - { id: mac, type: text, label: MAC address }
+          - { id: mac, type: text, label: MAC address, placeholder: 'AA:BB:CC:DD:EE:FF' }
           - { id: name, type: text, label: Friendly name }
           - { id: group, type: text, label: Group }
         actions:
           - { label: Save Name / Group, service: clients, action: alias, args: ['$field.mac', '$field.name', '$field.group'], style: primary, reload: true }
+      - { type: records, title: Saved Groups & Aliases, source: metadata, tags: [DEVICE, GROUP] }
 
   iot-clients:
     route: admin/iot
@@ -69,22 +61,8 @@ pages:
       iot: { service: iot-info, action: status, parser: pipe }
       clients: { service: client-data, action: snapshot-iot, parser: pipe }
     layout:
-      - type: records
-        title: IoT Network
-        source: iot
-      - type: records
-        title: IoT Devices & Traffic
-        source: clients
-      - type: form
-        title: IoT Client Action
-        fields:
-          - { id: action, type: select, label: Action, options: [{value: block, label: Block / unblock}, {value: reserve, label: Reserve / release IP}] }
-          - { id: mac, type: text, label: MAC address }
-          - { id: enabled, type: toggle, label: Enable action, default: true }
-          - { id: ip, type: text, label: Current IP }
-          - { id: name, type: text, label: Device name }
-        actions:
-          - { label: Apply, service: client-action, action: '$field.action', args: ['$field.mac', '$field.enabled', '$field.ip', '$field.name', iot], reload: true }
+      - { type: records, title: IoT Network, source: iot }
+      - { type: client-list, title: IoT Devices, source: clients, scope: iot }
 
   wireless:
     route: admin/wireless
@@ -95,9 +73,7 @@ pages:
     sources:
       wireless: { service: wireless, action: status, parser: pipe }
     layout:
-      - type: records
-        title: Radios & Wi-Fi Networks
-        source: wireless
+      - { type: wireless-panel, title: Radios & Wi-Fi Networks, source: wireless }
       - type: form
         title: Add Wi-Fi Network
         fields:
@@ -107,9 +83,9 @@ pages:
           - { id: encryption, type: select, label: Encryption, options: [{value: sae-mixed, label: WPA2/WPA3}, {value: sae, label: WPA3}, {value: psk2, label: WPA2}, {value: psk-mixed, label: WPA/WPA2}, {value: none, label: Open}] }
           - { id: password, type: password, label: Password }
         actions:
-          - { label: Add SSID, service: wireless, action: add-ssid, args: ['$field.radio', '$field.network', '$field.ssid', '$field.encryption', '$field.password'], reload: true }
+          - { label: Add SSID, service: wireless, action: add-ssid, args: ['$field.radio', '$field.network', '$field.ssid', '$field.encryption', '$field.password'], style: primary, reload: true }
       - type: form
-        title: Edit Radio
+        title: Radio Settings
         fields:
           - { id: radio, type: text, label: Radio }
           - { id: enabled, type: toggle, label: Enabled, default: true }
@@ -138,12 +114,7 @@ pages:
           - { id: vpn, type: toggle, label: VPN changes, default_from: events.vpn }
         actions:
           - { label: Save Monitoring, service: events, action: settings, args: ['$field.enabled', '$field.new_device', '$field.wan', '$field.vpn'], success: Monitoring saved., reload: true }
-      - type: records
-        title: Recent Events
-        source: events
-        tags: [EVENT]
-        columns: [Timestamp, Severity, Type, Message]
-        empty: No Mrouter events recorded.
+      - { type: event-list, title: Recent Events, source: events, empty: No Mrouter events recorded. }
       - type: actions
         items:
           - { label: Clear History, service: events, action: clear, style: danger, confirm: 'Clear local Mrouter event history?', reload: true }
@@ -353,31 +324,16 @@ pages:
     sources:
       status: { service: dhcp, action: status, parser: pipe }
     layout:
-      - { type: records, title: DHCP Scopes & Reservations, source: status }
-      - type: form
-        title: Update DHCP Scope
-        fields:
-          - { id: scope, type: text, label: Scope ID, placeholder: lan }
-          - { id: start, type: number, label: Start offset }
-          - { id: limit, type: number, label: Addresses }
-          - { id: lease, type: text, label: Lease time, placeholder: 12h }
-          - { id: enabled, type: toggle, label: Enabled, default: true }
-        actions:
-          - { label: Save Scope, service: dhcp, action: scope-save, args: ['$field.scope', '$field.start', '$field.limit', '$field.lease', '$field.enabled'], reload: true }
+      - { type: dhcp-panel, title: DHCP Scopes & Reservations, source: status }
       - type: form
         title: Add Reservation
         fields:
-          - { id: mac, type: text, label: MAC address }
-          - { id: ip, type: text, label: IP address }
+          - { id: mac, type: text, label: MAC address, placeholder: 'AA:BB:CC:DD:EE:FF' }
+          - { id: ip, type: text, label: IP address, placeholder: 192.168.11.20 }
           - { id: name, type: text, label: Name }
         actions:
           - { label: Add Reservation, service: dhcp, action: add-reservation, args: ['$field.mac', '$field.ip', '$field.name'], style: primary, reload: true }
-      - type: form
-        title: Delete Reservation
-        fields:
-          - { id: id, type: text, label: Reservation ID }
-        actions:
-          - { label: Delete Reservation, service: dhcp, action: delete-reservation, args: ['$field.id'], style: danger, confirm: 'Delete this reservation?', reload: true }
+      - { type: notice, text: Encrypted DNS is optional. Installing Mrouter does not enable or redirect DNS automatically. }
 
   firewall:
     route: admin/advanced/network-settings/firewall
