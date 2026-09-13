@@ -19,6 +19,7 @@ schema:
     - event-list
     - wireless-panel
     - dhcp-panel
+    - upload
   field_types:
     - text
     - password
