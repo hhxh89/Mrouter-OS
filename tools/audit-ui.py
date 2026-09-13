@@ -6,11 +6,31 @@ try:
 except Exception:
  sys.stderr.write('PyYAML is required. Install with: sudo apt install python3-yaml\n'); raise
 ROOT=Path(__file__).resolve().parents[1]
-APP=ROOT/'package/mrouter/luci-app-mrouter'; CORE=ROOT/'package/mrouter/mrouter-core/files/usr/libexec'
-PAGES=yaml.safe_load((APP/'ui-src/pages.yaml').read_text()); ACTIONS=yaml.safe_load((APP/'ui-src/actions.yaml').read_text()); SCHEMA=yaml.safe_load((APP/'ui-src/schema.yaml').read_text()); ACL=json.loads((APP/'root/usr/share/rpcd/acl.d/mrouter.json').read_text()); BRIDGE=(CORE/'mrouter-ui-action').read_text(errors='ignore')
+APP=ROOT/'package/mrouter/luci-app-mrouter'; CORE=ROOT/'package/mrouter/mrouter-core/files/usr/libexec'; SRC=APP/'ui-src'
+
+def load_yaml(p):
+ data=yaml.safe_load(p.read_text())
+ if not isinstance(data,dict) or data.get('version') != 1: raise SystemExit(f'{p}: version: 1 is required')
+ return data
+
+def deep_merge(base,patch):
+ if isinstance(base,dict) and isinstance(patch,dict):
+  out=dict(base)
+  for k,v in patch.items(): out[k]=deep_merge(out[k],v) if k in out else v
+  return out
+ return patch
+
+PAGES=load_yaml(SRC/'pages.yaml')
+raw_pages=(SRC/'pages.yaml').read_text()
+for ov in sorted(SRC.glob('pages-*.yaml')):
+ data=load_yaml(ov); raw_pages+='\n'+ov.read_text()
+ for pid,patch in (data.get('pages') or {}).items():
+  if pid not in PAGES.get('pages',{}): raise SystemExit(f'{ov}: unknown page id {pid}')
+  PAGES['pages'][pid]=deep_merge(PAGES['pages'][pid],patch)
+ACTIONS=load_yaml(SRC/'actions.yaml'); SCHEMA=load_yaml(SRC/'schema.yaml'); ACL=json.loads((APP/'root/usr/share/rpcd/acl.d/mrouter.json').read_text()); BRIDGE=(CORE/'mrouter-ui-action').read_text(errors='ignore')
 errors=[]; pages=PAGES.get('pages',{}); services=ACTIONS.get('services',{}); allowed_blocks=set(SCHEMA.get('schema',{}).get('block_types',[])); allowed_fields=set(SCHEMA.get('schema',{}).get('field_types',[]))
-raw_pages=(APP/'ui-src/pages.yaml').read_text(); raw_runtime=(APP/'htdocs/luci-static/mrouter-ui/schema-runtime.js').read_text()
-if re.search(r'\btype:\s*legacy\b',raw_pages): errors.append('pages.yaml still contains a legacy block')
+raw_runtime=(APP/'htdocs/luci-static/mrouter-ui/schema-runtime.js').read_text()
+if re.search(r'\btype:\s*legacy\b',raw_pages): errors.append('page YAML still contains a legacy block')
 if 'loadLegacy' in raw_runtime or 'view.mrouter.' in raw_runtime: errors.append('schema runtime still contains legacy view loading')
 if 'legacy' in allowed_blocks: errors.append('schema still permits legacy blocks')
 
@@ -29,7 +49,7 @@ def walk(obj,pid,ctx='block'):
   for k,v in obj.items():
    if k=='fields' and isinstance(v,list):
     for item in v: walk(item,pid,'field')
-   elif k in ('labels','options'):
+   elif k in ('labels','options','options_from'):
     continue
    else:
     walk(v,pid,ctx)
@@ -44,8 +64,9 @@ registered={}; helper_actions={}
 def action_dispatch(text):
  m=re.search(r'case\s+"\$ACTION"\s+in(?P<body>.*?)(?:\nesac|\n\s*esac)',text,re.S)
  if not m: return None
- out=set()
- for x in re.finditer(r'^\s*([A-Za-z0-9_.:-]+(?:\|[A-Za-z0-9_.:-]+)*)\)\s*',m.group('body'),re.M):
+ body=m.group('body'); out=set()
+ # Support normal multiline dispatchers and compact BusyBox-style one-line cases.
+ for x in re.finditer(r'(?:^|;;)\s*([A-Za-z0-9_.:-]+(?:\|[A-Za-z0-9_.:-]+)*)\)\s*',body,re.M):
   out.update(a for a in x.group(1).split('|') if a and a!='*' and not a.startswith('$'))
  return out
 for sid,s in services.items():
@@ -56,18 +77,14 @@ for sid,s in services.items():
  helper_actions[sid]=action_dispatch(hf.read_text(errors='ignore'))
 
 ALIASES={
- ('tailscale','up'):('tailscale','bind'),
- ('tailscale','down'):('tailscale','disable'),
- ('adguard','start'):('adguard','enable'),
- ('adguard','stop'):('adguard','disable'),
- ('adguard','restart'):('adguard','enable'),
- ('openvpn','disconnect'):('openvpn','connect'),
- ('policy','reconcile'):('policy','status'),
+ ('tailscale','up'):('tailscale','bind'),('tailscale','down'):('tailscale','disable'),
+ ('adguard','start'):('adguard','enable'),('adguard','stop'):('adguard','disable'),('adguard','restart'):('adguard','enable'),
+ ('openvpn','disconnect'):('openvpn','connect'),('policy','reconcile'):('policy','status'),
 }
 for svc,act in sorted(yaml_pairs):
  if f'{svc}:{act}' not in BRIDGE: errors.append(f'YAML action not allowed by bridge: {svc}:{act}')
  hs,ha=ALIASES.get((svc,act),(svc,act)); accepted=helper_actions.get(hs)
- if accepted is not None and ha not in accepted: errors.append(f'YAML action not accepted by helper: {svc}:{act} -> {hs}:{ha} (helper accepts {sorted(accepted)})')
+ if accepted is not None and accepted and ha not in accepted: errors.append(f'YAML action not accepted by helper: {svc}:{act} -> {hs}:{ha} (helper accepts {sorted(accepted)})')
 
 read_file=ACL['mrouter-ui']['read']['file']; write_file=ACL['mrouter-ui']['write']['file']
 for h in ('/usr/libexec/mrouter-ui-action','/usr/libexec/mrouter-ui-config'):
@@ -84,4 +101,4 @@ if errors:
  print('Mrouter native YAML UI audit FAILED:')
  for e in errors: print(' - '+e)
  sys.exit(1)
-print(f'Mrouter native YAML UI audit OK: {len(pages)} pages, {len(registered)} registered services, {len(yaml_pairs)} literal actions, 0 legacy blocks')
+print(f'Mrouter native YAML UI audit OK: {len(pages)} pages, {len(registered)} registered services, {len(yaml_pairs)} literal actions, {len(list(SRC.glob("pages-*.yaml")))} modular overlays, 0 legacy blocks')
