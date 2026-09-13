@@ -4,6 +4,16 @@ ACTION="${1:-status}"
 BACKROOT='/etc/mrouter/setup-backups'
 mkdir -p "$BACKROOT"
 
+ensure_state(){
+    [ -e /etc/config/mrouter ] || : > /etc/config/mrouter
+    uci -q get mrouter.system >/dev/null 2>&1 || uci set mrouter.system='system'
+    uci -q get mrouter.ports >/dev/null 2>&1 || uci set mrouter.ports='ports'
+    [ -n "$(uci -q get mrouter.system.setup_complete 2>/dev/null)" ] || uci set mrouter.system.setup_complete='0'
+    [ -n "$(uci -q get mrouter.system.setup_mode 2>/dev/null)" ] || uci set mrouter.system.setup_mode='pending'
+    [ -n "$(uci -q get mrouter.ports.pending_reboot 2>/dev/null)" ] || uci set mrouter.ports.pending_reboot='0'
+    uci commit mrouter >/dev/null 2>&1 || true
+}
+
 valid_dev() { [ -n "$1" ] && [ -e "/sys/class/net/$1" ] && [ "$1" != lo ]; }
 valid_ipv4() { printf '%s\n' "$1" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}$'; }
 
@@ -17,12 +27,13 @@ list_devs() {
 }
 
 status() {
-    DONE="$(uci -q get mrouter.system.setup_complete)"; [ "$DONE" = 1 ] || DONE=0
-    PENDING="$(uci -q get mrouter.ports.pending_reboot)"; [ "$PENDING" = 1 ] || PENDING=0
-    LANDEV="$(uci -q get network.lan.device)"; WANDEV="$(uci -q get network.wan.device)"
-    LANIP="$(uci -q get network.lan.ipaddr)"
+    ensure_state
+    DONE="$(uci -q get mrouter.system.setup_complete 2>/dev/null)"; [ "$DONE" = 1 ] || DONE=0
+    PENDING="$(uci -q get mrouter.ports.pending_reboot 2>/dev/null)"; [ "$PENDING" = 1 ] || PENDING=0
+    LANDEV="$(uci -q get network.lan.device 2>/dev/null)"; WANDEV="$(uci -q get network.wan.device 2>/dev/null)"
+    LANIP="$(uci -q get network.lan.ipaddr 2>/dev/null)"
     LATEST="$(find "$BACKROOT" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | tail -n1)"
-    MODE="$(uci -q get mrouter.system.setup_mode)"; [ -n "$MODE" ] || MODE=unknown
+    MODE="$(uci -q get mrouter.system.setup_mode 2>/dev/null)"; [ -n "$MODE" ] || MODE=unknown
     printf 'STATUS|%s|%s|%s|%s|%s|%s|%s\n' "$DONE" "$PENDING" "$LANDEV" "$WANDEV" "$LANIP" "$LATEST" "$MODE"
     list_devs
 }
@@ -38,14 +49,18 @@ backup_now() {
 }
 
 keep_current() {
+    ensure_state
     uci set mrouter.system.setup_complete='1'
     uci set mrouter.system.setup_mode='keep'
     uci set mrouter.ports.pending_reboot='0'
     uci commit mrouter
+    rm -f /tmp/luci-indexcache* 2>/dev/null || true
+    rm -rf /tmp/luci-modulecache/* 2>/dev/null || true
     status
 }
 
 apply_twoport() {
+    ensure_state
     WAN="${2:-}"; LAN="${3:-}"; LANIP="${4:-192.168.8.1}"; IOT="${5:-0}"
     valid_dev "$WAN" || { echo 'Invalid WAN device' >&2; exit 1; }
     valid_dev "$LAN" || { echo 'Invalid LAN device' >&2; exit 1; }
@@ -77,17 +92,16 @@ apply_twoport() {
     uci set dhcp.lan.leasetime='12h'
     uci set dhcp.lan.ignore='0'
 
-    # Ensure LAN/WAN firewall zones exist but do not remove unrelated user zones.
     LAN_ZONE=''; WAN_ZONE=''
     for Z in $(uci show firewall 2>/dev/null | sed -n 's/^firewall\.\([^.=]*\)=zone$/\1/p'); do
-        case "$(uci -q get firewall.$Z.name)" in lan) LAN_ZONE="$Z" ;; wan) WAN_ZONE="$Z" ;; esac
+        case "$(uci -q get firewall.$Z.name 2>/dev/null)" in lan) LAN_ZONE="$Z" ;; wan) WAN_ZONE="$Z" ;; esac
     done
     [ -n "$LAN_ZONE" ] || { LAN_ZONE='mrouter_lan_zone'; uci set firewall.$LAN_ZONE='zone'; uci set firewall.$LAN_ZONE.name='lan'; uci set firewall.$LAN_ZONE.input='ACCEPT'; uci set firewall.$LAN_ZONE.output='ACCEPT'; uci set firewall.$LAN_ZONE.forward='ACCEPT'; }
     uci -q delete firewall.$LAN_ZONE.network; uci add_list firewall.$LAN_ZONE.network='lan'
     [ -n "$WAN_ZONE" ] || { WAN_ZONE='mrouter_wan_zone'; uci set firewall.$WAN_ZONE='zone'; uci set firewall.$WAN_ZONE.name='wan'; uci set firewall.$WAN_ZONE.input='REJECT'; uci set firewall.$WAN_ZONE.output='ACCEPT'; uci set firewall.$WAN_ZONE.forward='REJECT'; }
     uci -q delete firewall.$WAN_ZONE.network; uci add_list firewall.$WAN_ZONE.network='wan'; uci set firewall.$WAN_ZONE.masq='1'; uci set firewall.$WAN_ZONE.mtu_fix='1'
     FOUND=0
-    for F in $(uci show firewall 2>/dev/null | sed -n 's/^firewall\.\([^.=]*\)=forwarding$/\1/p'); do [ "$(uci -q get firewall.$F.src)" = lan ] && [ "$(uci -q get firewall.$F.dest)" = wan ] && FOUND=1; done
+    for F in $(uci show firewall 2>/dev/null | sed -n 's/^firewall\.\([^.=]*\)=forwarding$/\1/p'); do [ "$(uci -q get firewall.$F.src 2>/dev/null)" = lan ] && [ "$(uci -q get firewall.$F.dest 2>/dev/null)" = wan ] && FOUND=1; done
     [ "$FOUND" = 1 ] || { uci set firewall.mrouter_lan_wan='forwarding'; uci set firewall.mrouter_lan_wan.src='lan'; uci set firewall.mrouter_lan_wan.dest='wan'; }
 
     if [ "$IOT" = 1 ]; then
@@ -108,11 +122,14 @@ apply_twoport() {
     uci set mrouter.system.setup_complete='1'
     uci set mrouter.system.setup_mode='twoport'
     uci commit network; uci commit dhcp; uci commit firewall; uci commit mrouter
+    rm -f /tmp/luci-indexcache* 2>/dev/null || true
+    rm -rf /tmp/luci-modulecache/* 2>/dev/null || true
     printf 'SAVED|%s\n' "$BACKUP"
     status
 }
 
 rollback_latest() {
+    ensure_state
     DIR="$(find "$BACKROOT" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | tail -n1)"
     [ -n "$DIR" ] || { echo 'No setup backup found' >&2; exit 1; }
     [ -f "$DIR/network" ] && cp -f "$DIR/network" /etc/config/network
