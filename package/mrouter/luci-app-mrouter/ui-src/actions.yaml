@@ -3,6 +3,9 @@ services:
   internet:
     helper: /usr/libexec/mrouter-internet-info
     mode: read
+  internet-summary:
+    helper: /usr/libexec/mrouter-internet-summary
+    mode: read
   traffic:
     helper: /usr/libexec/mrouter-traffic-live
     mode: read
