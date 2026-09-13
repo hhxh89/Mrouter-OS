@@ -1,16 +1,22 @@
 version: 1
 pages:
   admin-password:
+    title: Administrator Account
+    subtitle: Protect the Mrouter/OpenWrt administrator account
     sources:
-      snapshot: { service: advanced, action: snapshot, parser: pipe }
+      account: { service: account, action: status, parser: pipe, fields: [password_set] }
     layout:
-    - { type: records, title: Account Security, source: snapshot, tags: [PASS], columns: [Password set] }
+    - type: stats
+      items:
+      - { label: Administrator password configured, value_from: account.password_set }
     - type: form
       title: Change Administrator Password
+      text: This changes the OpenWrt root administrator password used for Mrouter web and local administration.
       fields:
       - { id: password, type: password, label: New password, help: Minimum 8 characters. }
+      - { id: confirm, type: password, label: Confirm new password }
       actions:
-      - { label: Change Password, service: advanced, action: password-set, args: [$field.password], style: danger, confirm: 'Change the OpenWrt root administrator password?', reload: true }
+      - { label: Change Administrator Password, service: account, action: set, args: [$field.password, $field.confirm], style: danger, confirm: 'Change the router administrator password?', success: Administrator password updated. }
   admin-sshkeys:
     sources:
       keys: { service: advanced, action: keys, parser: pipe }
