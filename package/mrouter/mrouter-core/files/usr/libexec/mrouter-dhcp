@@ -1,0 +1,14 @@
+#!/bin/sh
+set -u
+ACTION="${1:-status}"
+esc(){ printf '%s' "${1:-}" | tr '|\r\n' '   '; }
+safe(){ printf '%s\n' "${1:-}" | grep -Eq '^[A-Za-z0-9_]+$'; }
+status(){
+    COUNT=0; [ -r /tmp/dhcp.leases ] && COUNT="$(wc -l < /tmp/dhcp.leases | tr -d ' ')"; DOH=0; [ -x /etc/init.d/https-dns-proxy ] && /etc/init.d/https-dns-proxy running >/dev/null 2>&1 && DOH=1 || true; printf 'STATUS|%s|%s\n' "$COUNT" "$DOH"
+    for S in $(uci show dhcp 2>/dev/null | sed -n 's/^dhcp\.\([^.=]*\)=dhcp$/\1/p'); do printf 'SCOPE|%s|%s|%s|%s|%s|%s\n' "$S" "$(esc "$(uci -q get dhcp.$S.interface || true)")" "$(uci -q get dhcp.$S.ignore || echo 0)" "$(esc "$(uci -q get dhcp.$S.start || true)")" "$(esc "$(uci -q get dhcp.$S.limit || true)")" "$(esc "$(uci -q get dhcp.$S.leasetime || true)")"; done
+    for S in $(uci show dhcp 2>/dev/null | sed -n 's/^dhcp\.\([^.=]*\)=host$/\1/p'); do printf 'RES|%s|%s|%s|%s\n' "$S" "$(esc "$(uci -q get dhcp.$S.name || true)")" "$(esc "$(uci -q get dhcp.$S.mac || true)")" "$(esc "$(uci -q get dhcp.$S.ip || true)")"; done
+}
+add_res(){ MAC="${2:-}"; IP="${3:-}"; NAME="${4:-}"; printf '%s' "$MAC" | grep -Eqi '^([0-9a-f]{2}:){5}[0-9a-f]{2}$' || { echo 'Invalid MAC' >&2; exit 1; }; printf '%s' "$IP" | grep -Eq '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' || { echo 'Invalid IPv4' >&2; exit 1; }; KEY="mrouter_$(printf '%s' "$MAC" | tr -d ':' | tr A-F a-f)"; uci -q delete dhcp.$KEY; uci set dhcp.$KEY='host'; uci set dhcp.$KEY.mac="$MAC"; uci set dhcp.$KEY.ip="$IP"; [ -n "$NAME" ] && uci set dhcp.$KEY.name="$NAME"; uci set dhcp.$KEY.mrouter_managed='1'; uci commit dhcp; /etc/init.d/dnsmasq reload >/dev/null 2>&1 || true; status; }
+del_res(){ S="${2:-}"; safe "$S" || exit 1; [ "$(uci -q get dhcp.$S)" = host ] || exit 1; uci -q delete dhcp.$S; uci commit dhcp; /etc/init.d/dnsmasq reload >/dev/null 2>&1 || true; status; }
+scope(){ S="${2:-}"; START="${3:-100}"; LIMIT="${4:-100}"; LEASE="${5:-12h}"; EN="${6:-1}"; safe "$S" || exit 1; [ "$(uci -q get dhcp.$S)" = dhcp ] || exit 1; case "$START:$LIMIT" in *[!0-9:]*) exit 1;; esac; uci set dhcp.$S.start="$START"; uci set dhcp.$S.limit="$LIMIT"; uci set dhcp.$S.leasetime="$LEASE"; uci set dhcp.$S.ignore="$([ "$EN" = 1 ] && echo 0 || echo 1)"; uci commit dhcp; /etc/init.d/dnsmasq restart >/dev/null 2>&1 || true; status; }
+case "$ACTION" in status) status;; add-reservation) add_res "$@";; delete-reservation) del_res "$@";; scope-save) scope "$@";; *) exit 2;; esac

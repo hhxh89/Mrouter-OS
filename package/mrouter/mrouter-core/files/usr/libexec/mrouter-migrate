@@ -1,44 +1,25 @@
 #!/bin/sh
 set -eu
-
-TARGET_SCHEMA=1202
+TARGET_SCHEMA=1300
 uci -q get mrouter.system >/dev/null 2>&1 || uci set mrouter.system='system'
-CURRENT="$(uci -q get mrouter.system.schema || echo 0)"
-case "$CURRENT" in ''|*[!0-9]*) CURRENT=0 ;; esac
-[ "$CURRENT" -le "$TARGET_SCHEMA" ] || { echo "Mrouter config schema $CURRENT is newer than firmware schema $TARGET_SCHEMA" >&2; exit 1; }
-
-if [ "$CURRENT" -lt 1200 ]; then CURRENT=1200; fi
-
-# 1201 introduced parental controls/content filtering. Preserve existing values.
+CURRENT="$(uci -q get mrouter.system.schema || echo 0)"; case "$CURRENT" in ''|*[!0-9]*) CURRENT=0;; esac
+[ "$CURRENT" -le "$TARGET_SCHEMA" ] || { echo "Mrouter config schema $CURRENT is newer than package schema $TARGET_SCHEMA" >&2; exit 1; }
+[ "$CURRENT" -ge 1200 ] || CURRENT=1200
 if [ "$CURRENT" -lt 1201 ]; then
-    uci -q get mrouterparental.config >/dev/null 2>&1 || uci set mrouterparental.config='parental'
-    [ -n "$(uci -q get mrouterparental.config.enabled)" ] || uci set mrouterparental.config.enabled='0'
-    uci -q get mrouterfilter.config >/dev/null 2>&1 || uci set mrouterfilter.config='filter'
-    [ -n "$(uci -q get mrouterfilter.config.enabled)" ] || uci set mrouterfilter.config.enabled='0'
-    [ -n "$(uci -q get mrouterfilter.config.force_dns)" ] || uci set mrouterfilter.config.force_dns='0'
-    [ -n "$(uci -q get mrouterfilter.config.block_dot)" ] || uci set mrouterfilter.config.block_dot='0'
-    uci commit mrouterparental
-    uci commit mrouterfilter
-    CURRENT=1201
+  uci -q get mrouterparental.config >/dev/null 2>&1 || uci set mrouterparental.config='parental'; [ -n "$(uci -q get mrouterparental.config.enabled)" ] || uci set mrouterparental.config.enabled='0'
+  uci -q get mrouterfilter.config >/dev/null 2>&1 || uci set mrouterfilter.config='filter'; [ -n "$(uci -q get mrouterfilter.config.enabled)" ] || uci set mrouterfilter.config.enabled='0'; [ -n "$(uci -q get mrouterfilter.config.force_dns)" ] || uci set mrouterfilter.config.force_dns='0'; [ -n "$(uci -q get mrouterfilter.config.block_dot)" ] || uci set mrouterfilter.config.block_dot='0'; uci commit mrouterparental; uci commit mrouterfilter; CURRENT=1201
 fi
-
-# 1202 adds Local Services, content-filter allowlist support and the package-first
-# safety model. Never reset existing pre-v1 choices during migration.
 if [ "$CURRENT" -lt 1202 ]; then
-    uci -q get mrouterservices.main >/dev/null 2>&1 || uci set mrouterservices.main='general'
-    [ -n "$(uci -q get mrouterservices.main.dns_mode)" ] || uci set mrouterservices.main.dns_mode='mrouter'
-    [ -n "$(uci -q get mrouterservices.main.pihole_port)" ] || uci set mrouterservices.main.pihole_port='53'
-    uci commit mrouterservices
-    CURRENT=1202
+  uci -q get mrouterservices.main >/dev/null 2>&1 || uci set mrouterservices.main='general'; [ -n "$(uci -q get mrouterservices.main.dns_mode)" ] || uci set mrouterservices.main.dns_mode='mrouter'; [ -n "$(uci -q get mrouterservices.main.pihole_port)" ] || uci set mrouterservices.main.pihole_port='53'; uci commit mrouterservices; CURRENT=1202
 fi
-
-VERSION="$(sed -n 's/^MROUTER_VERSION="\(.*\)"/\1/p' /etc/mrouter-release 2>/dev/null || true)"
-CHANNEL="$(sed -n 's/^MROUTER_CHANNEL="\(.*\)"/\1/p' /etc/mrouter-release 2>/dev/null || true)"
-[ -n "$VERSION" ] || VERSION='1.0.0'
-[ -n "$CHANNEL" ] || CHANNEL='stable'
-uci set mrouter.system.version="$VERSION"
-uci set mrouter.system.channel="$CHANNEL"
-uci set mrouter.system.schema="$TARGET_SCHEMA"
-uci commit mrouter
-
+if [ "$CURRENT" -lt 1300 ]; then
+  uci -q get mrouterevents.main >/dev/null 2>&1 || uci set mrouterevents.main='settings'; [ -n "$(uci -q get mrouterevents.main.enabled)" ] || uci set mrouterevents.main.enabled='1'; [ -n "$(uci -q get mrouterevents.main.new_device)" ] || uci set mrouterevents.main.new_device='1'; [ -n "$(uci -q get mrouterevents.main.wan)" ] || uci set mrouterevents.main.wan='1'; [ -n "$(uci -q get mrouterevents.main.vpn)" ] || uci set mrouterevents.main.vpn='1'
+  uci -q get mrouterclients.main >/dev/null 2>&1 || uci set mrouterclients.main='settings'; [ -n "$(uci -q get mrouterclients.main.quarantine_new)" ] || uci set mrouterclients.main.quarantine_new='0'
+  uci -q get mrouterwan.main >/dev/null 2>&1 || uci set mrouterwan.main='settings'; [ -n "$(uci -q get mrouterwan.main.enabled)" ] || uci set mrouterwan.main.enabled='0'; [ -n "$(uci -q get mrouterwan.main.primary)" ] || uci set mrouterwan.main.primary='wan'; [ -n "$(uci -q get mrouterwan.main.mode)" ] || uci set mrouterwan.main.mode='failover'
+  uci commit mrouterevents; uci commit mrouterclients; uci commit mrouterwan; CURRENT=1300
+fi
+VERSION="$(sed -n 's/^MROUTER_VERSION="\(.*\)"/\1/p' /etc/mrouter-release 2>/dev/null || true)"; CHANNEL="$(sed -n 's/^MROUTER_CHANNEL="\(.*\)"/\1/p' /etc/mrouter-release 2>/dev/null || true)"; [ -n "$VERSION" ] || VERSION=1.1.0; [ -n "$CHANNEL" ] || CHANNEL=development
+uci set mrouter.system.version="$VERSION"; uci set mrouter.system.channel="$CHANNEL"; uci set mrouter.system.schema="$TARGET_SCHEMA"; uci commit mrouter
+/etc/init.d/mrouter-observer enable >/dev/null 2>&1 || true
+/etc/init.d/mrouter-policy-monitor enable >/dev/null 2>&1 || true
 echo "Mrouter configuration schema: $TARGET_SCHEMA"

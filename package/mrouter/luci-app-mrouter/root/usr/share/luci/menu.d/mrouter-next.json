@@ -1,0 +1,26 @@
+{
+  "admin/wireless": {
+    "title": "Wireless",
+    "order": 4,
+    "action": { "type": "view", "path": "mrouter/wireless" },
+    "depends": { "acl": [ "mrouter-ui" ] }
+  },
+  "admin/events": {
+    "title": "Events",
+    "order": 20,
+    "action": { "type": "view", "path": "mrouter/events" },
+    "depends": { "acl": [ "mrouter-ui" ] }
+  },
+  "admin/advanced/network-settings/multiwan": {
+    "title": "Multi-WAN",
+    "order": 8,
+    "action": { "type": "view", "path": "mrouter/multiwan" },
+    "depends": { "acl": [ "mrouter-ui" ] }
+  },
+  "admin/advanced/support": {
+    "title": "Support Bundle",
+    "order": 35,
+    "action": { "type": "view", "path": "mrouter/support" },
+    "depends": { "acl": [ "mrouter-ui" ] }
+  }
+}

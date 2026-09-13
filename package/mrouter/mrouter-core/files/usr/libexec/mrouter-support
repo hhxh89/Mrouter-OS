@@ -1,0 +1,7 @@
+#!/bin/sh
+set -u
+ACTION="${1:-summary}"
+OUT=/tmp/mrouter-support.txt
+summary(){ echo "Mrouter support summary"; echo "Generated: $(date -Iseconds 2>/dev/null || date)"; echo; cat /etc/mrouter-release 2>/dev/null || true; echo; cat /etc/openwrt_release 2>/dev/null || true; echo; uname -a; echo; echo '--- routes ---'; ip -4 route 2>/dev/null; ip -6 route 2>/dev/null | head -n 80; echo; echo '--- addresses ---'; ip -brief address 2>/dev/null; echo; echo '--- services ---'; for S in network firewall dnsmasq pbr tailscale adguardhome mwan3; do [ -x /etc/init.d/$S ] || continue; /etc/init.d/$S running >/dev/null 2>&1 && echo "$S running" || echo "$S stopped"; done; echo; echo '--- storage ---'; df -h 2>/dev/null; echo; echo '--- memory ---'; free 2>/dev/null || true; echo; echo '--- recent warnings/errors ---'; logread 2>/dev/null | grep -Ei 'error|warn|fail|down|oom' | tail -n 150 | sed -E 's/(password|passwd|token|secret|private[_ -]?key)[^ ,;]*/\1=[REDACTED]/Ig'; }
+bundle(){ summary > "$OUT"; chmod 600 "$OUT"; printf 'FILE|%s\n' "$OUT"; }
+case "$ACTION" in summary) summary;; bundle) bundle;; *) exit 2;; esac

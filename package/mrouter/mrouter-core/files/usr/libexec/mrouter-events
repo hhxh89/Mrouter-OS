@@ -1,0 +1,13 @@
+#!/bin/sh
+set -u
+ACTION="${1:-status}"
+LOG=/tmp/mrouter-events.log
+CFG=mrouterevents
+esc(){ printf '%s' "${1:-}" | tr '|\r\n' '   '; }
+add(){ SEV="${2:-info}"; TYPE="${3:-system}"; shift 3 2>/dev/null || true; MSG="$*"; case "$SEV" in info|warning|critical) ;; *) SEV=info;; esac; printf '%s|%s|%s|%s\n' "$(date +%s)" "$SEV" "$(esc "$TYPE")" "$(esc "$MSG")" >> "$LOG"; tail -n 500 "$LOG" > "$LOG.tmp" 2>/dev/null && mv "$LOG.tmp" "$LOG" || true; }
+status(){
+    ENABLED="$(uci -q get $CFG.main.enabled || echo 1)"; NEW="$(uci -q get $CFG.main.new_device || echo 1)"; WAN="$(uci -q get $CFG.main.wan || echo 1)"; VPN="$(uci -q get $CFG.main.vpn || echo 1)"; printf 'STATUS|%s|%s|%s|%s\n' "$ENABLED" "$NEW" "$WAN" "$VPN"
+    [ -r "$LOG" ] && tail -n 250 "$LOG" | while IFS='|' read -r E S T M; do printf 'EVENT|%s|%s|%s|%s\n' "$E" "$S" "$(esc "$T")" "$(esc "$M")"; done
+}
+settings(){ EN="${2:-1}"; NEW="${3:-1}"; WAN="${4:-1}"; VPN="${5:-1}"; uci set $CFG.main='settings'; uci set $CFG.main.enabled="$EN"; uci set $CFG.main.new_device="$NEW"; uci set $CFG.main.wan="$WAN"; uci set $CFG.main.vpn="$VPN"; uci commit $CFG; status; }
+case "$ACTION" in status) status;; add) add "$@";; clear) : > "$LOG"; status;; settings) settings "$@";; *) exit 2;; esac

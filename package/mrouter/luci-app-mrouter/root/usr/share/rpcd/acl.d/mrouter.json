@@ -1,104 +1,63 @@
 {
   "mrouter-ui": {
-    "description": "Mrouter-OS interface",
+    "description": "Mrouter interface",
     "read": {
       "file": {
-        "/usr/libexec/mrouter-internet-info": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-client-data": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-iot-info": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-status-adguard": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-status-tailscale": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-status-wireguard": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-status-openvpn": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-status-policy": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-status-ddns": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-status-health": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-status-ports": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-status-parental": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-status-content-filter": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-services": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-advanced": [
-          "exec"
-        ]
+        "/usr/libexec/mrouter-internet-info": ["exec"],
+        "/usr/libexec/mrouter-traffic-live": ["exec"],
+        "/usr/libexec/mrouter-client-data": ["exec"],
+        "/usr/libexec/mrouter-clients": ["exec"],
+        "/usr/libexec/mrouter-iot-info": ["exec"],
+        "/usr/libexec/mrouter-wireless": ["exec"],
+        "/usr/libexec/mrouter-networks": ["exec"],
+        "/usr/libexec/mrouter-events": ["exec"],
+        "/usr/libexec/mrouter-wan": ["exec"],
+        "/usr/libexec/mrouter-dhcp": ["exec"],
+        "/usr/libexec/mrouter-firewall": ["exec"],
+        "/usr/libexec/mrouter-support": ["exec"],
+        "/usr/libexec/mrouter-status-adguard": ["exec"],
+        "/usr/libexec/mrouter-status-tailscale": ["exec"],
+        "/usr/libexec/mrouter-status-wireguard": ["exec"],
+        "/usr/libexec/mrouter-status-wireguard-client": ["exec"],
+        "/usr/libexec/mrouter-status-openvpn": ["exec"],
+        "/usr/libexec/mrouter-status-policy": ["exec"],
+        "/usr/libexec/mrouter-status-ddns": ["exec"],
+        "/usr/libexec/mrouter-status-health": ["exec"],
+        "/usr/libexec/mrouter-status-ports": ["exec"],
+        "/usr/libexec/mrouter-status-parental": ["exec"],
+        "/usr/libexec/mrouter-status-content-filter": ["exec"],
+        "/usr/libexec/mrouter-services": ["exec"],
+        "/usr/libexec/mrouter-advanced": ["exec"],
+        "/tmp/mrouter-support.txt": ["read"]
       },
-      "ubus": {
-        "luci-rpc": [
-          "getDHCPLeases"
-        ]
-      }
+      "ubus": {"luci-rpc": ["getDHCPLeases"]}
     },
     "write": {
-      "cgi-io": [
-        "upload"
-      ],
+      "cgi-io": ["upload"],
       "file": {
-        "/tmp/mrouter-openvpn-upload": [
-          "write"
-        ],
-        "/usr/libexec/mrouter-client-action": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-adguard": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-tailscale": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-wireguard": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-openvpn": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-policy": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-ddns": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-ports": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-parental": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-content-filter": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-services": [
-          "exec"
-        ],
-        "/usr/libexec/mrouter-advanced": [
-          "exec"
-        ]
+        "/tmp/mrouter-openvpn-upload": ["write"],
+        "/tmp/mrouter-wireguard-client-upload": ["write"],
+        "/usr/libexec/mrouter-client-action": ["exec"],
+        "/usr/libexec/mrouter-clients": ["exec"],
+        "/usr/libexec/mrouter-wireless": ["exec"],
+        "/usr/libexec/mrouter-networks": ["exec"],
+        "/usr/libexec/mrouter-events": ["exec"],
+        "/usr/libexec/mrouter-wan": ["exec"],
+        "/usr/libexec/mrouter-dhcp": ["exec"],
+        "/usr/libexec/mrouter-firewall": ["exec"],
+        "/usr/libexec/mrouter-support": ["exec"],
+        "/usr/libexec/mrouter-adguard": ["exec"],
+        "/usr/libexec/mrouter-tailscale": ["exec"],
+        "/usr/libexec/mrouter-wireguard": ["exec"],
+        "/usr/libexec/mrouter-wireguard-client": ["exec"],
+        "/usr/libexec/mrouter-openvpn": ["exec"],
+        "/usr/libexec/mrouter-policy": ["exec"],
+        "/usr/libexec/mrouter-ddns": ["exec"],
+        "/usr/libexec/mrouter-ports": ["exec"],
+        "/usr/libexec/mrouter-parental": ["exec"],
+        "/usr/libexec/mrouter-content-filter": ["exec"],
+        "/usr/libexec/mrouter-services": ["exec"],
+        "/usr/libexec/mrouter-advanced": ["exec"]
       }
     }
   }

@@ -1,0 +1,11 @@
+#!/bin/sh
+set -u
+iface_bytes(){ D="$1"; [ -n "$D" ] && [ -r "/sys/class/net/$D/statistics/rx_bytes" ] || return; RX="$(cat /sys/class/net/$D/statistics/rx_bytes 2>/dev/null || echo 0)"; TX="$(cat /sys/class/net/$D/statistics/tx_bytes 2>/dev/null || echo 0)"; printf '%s|%s' "$RX" "$TX"; }
+WANDEV="$(ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@.l3_device' 2>/dev/null)"
+[ -n "$WANDEV" ] || WANDEV="$(uci -q get network.wan.device || uci -q get network.wan.ifname || true)"
+B="$(iface_bytes "$WANDEV" || true)"; [ -n "$B" ] && printf 'WAN|%s|%s\n' "$WANDEV" "$B"
+# Active tunnel interfaces. These are raw kernel byte counters, not estimated traffic.
+for D in mrouter_ovpn tailscale0 wg0 $(ls /sys/class/net 2>/dev/null | grep '^mwg[0-9][0-9]*$'); do
+    [ -r "/sys/class/net/$D/statistics/rx_bytes" ] || continue
+    B="$(iface_bytes "$D")"; printf 'VPN|%s|%s\n' "$D" "$B"
+done

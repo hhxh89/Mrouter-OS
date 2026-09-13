@@ -1,0 +1,14 @@
+#!/bin/sh
+set -u
+ACTION="${1:-status}"
+esc(){ printf '%s' "${1:-}" | tr '|\r\n' '   '; }
+safe(){ printf '%s\n' "${1:-}" | grep -Eq '^[A-Za-z0-9_]+$'; }
+status(){
+    UP=0; [ -x /etc/init.d/miniupnpd ] && /etc/init.d/miniupnpd running >/dev/null 2>&1 && UP=1 || true; printf 'STATUS|%s|%s\n' "$UP" "$([ -x /etc/init.d/miniupnpd ] && echo 1 || echo 0)"
+    for S in $(uci show firewall 2>/dev/null | sed -n 's/^firewall\.\([^.=]*\)=redirect$/\1/p'); do printf 'FORWARD|%s|%s|%s|%s|%s|%s|%s|%s\n' "$S" "$(esc "$(uci -q get firewall.$S.name || true)")" "$(esc "$(uci -q get firewall.$S.src || true)")" "$(esc "$(uci -q get firewall.$S.src_dport || true)")" "$(esc "$(uci -q get firewall.$S.dest || true)")" "$(esc "$(uci -q get firewall.$S.dest_ip || true)")" "$(esc "$(uci -q get firewall.$S.dest_port || true)")" "$(esc "$(uci -q get firewall.$S.proto || true)")"; done
+    for F in /var/run/miniupnpd.leases /tmp/miniupnpd.leases; do [ -r "$F" ] || continue; while IFS= read -r L; do printf 'UPNP|%s\n' "$(esc "$L")"; done < "$F"; break; done
+}
+add(){ NAME="${2:-Port forward}"; EXTERNAL="${3:-}"; IP="${4:-}"; INTERNAL="${5:-}"; PROTO="${6:-tcp}"; case "$EXTERNAL:$INTERNAL" in *[!0-9:]*) echo 'Invalid port' >&2; exit 1;; esac; [ "$EXTERNAL" -ge 1 ] && [ "$EXTERNAL" -le 65535 ] && [ "$INTERNAL" -ge 1 ] && [ "$INTERNAL" -le 65535 ] || exit 1; printf '%s' "$IP" | grep -Eq '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' || exit 1; case "$PROTO" in tcp|udp|'tcp udp') ;; *) exit 1;; esac; S="mrouter_pf_$(date +%s)_$$"; uci set firewall.$S='redirect'; uci set firewall.$S.name="$NAME"; uci set firewall.$S.src='wan'; uci set firewall.$S.dest='lan'; uci set firewall.$S.target='DNAT'; uci set firewall.$S.src_dport="$EXTERNAL"; uci set firewall.$S.dest_ip="$IP"; uci set firewall.$S.dest_port="$INTERNAL"; uci set firewall.$S.proto="$PROTO"; uci set firewall.$S.mrouter_managed='1'; uci commit firewall; /etc/init.d/firewall reload >/dev/null 2>&1 || true; status; }
+del(){ S="${2:-}"; safe "$S" || exit 1; [ "$(uci -q get firewall.$S)" = redirect ] || exit 1; uci -q delete firewall.$S; uci commit firewall; /etc/init.d/firewall reload >/dev/null 2>&1 || true; status; }
+upnp(){ EN="${2:-0}"; [ -x /etc/init.d/miniupnpd ] || { echo 'miniupnpd is not installed' >&2; exit 1; }; if [ "$EN" = 1 ]; then uci -q set upnpd.config.enabled='1' || true; uci commit upnpd 2>/dev/null || true; /etc/init.d/miniupnpd enable >/dev/null 2>&1 || true; /etc/init.d/miniupnpd restart >/dev/null 2>&1 || true; else uci -q set upnpd.config.enabled='0' || true; uci commit upnpd 2>/dev/null || true; /etc/init.d/miniupnpd disable >/dev/null 2>&1 || true; /etc/init.d/miniupnpd stop >/dev/null 2>&1 || true; fi; status; }
+case "$ACTION" in status) status;; add-forward) add "$@";; delete-forward) del "$@";; upnp) upnp "$@";; *) exit 2;; esac

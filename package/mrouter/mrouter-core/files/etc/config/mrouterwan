@@ -1,0 +1,5 @@
+config settings 'main'
+	option enabled '0'
+	option primary 'wan'
+	option secondary ''
+	option mode 'failover'

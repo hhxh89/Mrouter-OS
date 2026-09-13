@@ -1,0 +1,2 @@
+config settings 'main'
+	option quarantine_new '0'

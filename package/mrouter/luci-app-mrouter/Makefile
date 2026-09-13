@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-mrouter
-PKG_VERSION:=1.0.0
+PKG_VERSION:=1.1.0
 PKG_RELEASE:=1
 PKG_LICENSE:=Apache-2.0
 PKGARCH:=all
@@ -16,8 +16,7 @@ define Package/luci-app-mrouter
 endef
 
 define Package/luci-app-mrouter/description
- Modern Mrouter-OS LuCI interface for Internet, clients, IoT, VPN, parental controls,
- content filtering, local services, system health and advanced administration.
+ Modern Mrouter LuCI package interface for Internet, clients, wireless, VPN, protection, services, events and advanced network administration.
 endef
 
 define Build/Compile
@@ -32,11 +31,7 @@ endef
 
 define Package/luci-app-mrouter/postinst
 #!/bin/sh
-[ -n "$${IPKG_INSTROOT}" ] || {
-	rm -f /tmp/luci-indexcache*
-	rm -rf /tmp/luci-modulecache/* 2>/dev/null || true
-	/etc/init.d/rpcd reload 2>/dev/null || true
-}
+[ -n "$${IPKG_INSTROOT}" ] || { rm -f /tmp/luci-indexcache*; rm -rf /tmp/luci-modulecache/* 2>/dev/null || true; /etc/init.d/rpcd reload 2>/dev/null || true; }
 exit 0
 endef
 

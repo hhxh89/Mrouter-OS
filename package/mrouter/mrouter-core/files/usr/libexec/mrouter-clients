@@ -1,0 +1,13 @@
+#!/bin/sh
+set -u
+ACTION="${1:-status}"
+CFG=mrouterclients
+esc(){ printf '%s' "${1:-}" | tr '|\r\n' '   '; }
+macok(){ printf '%s' "${1:-}" | grep -Eqi '^([0-9a-f]{2}:){5}[0-9a-f]{2}$'; }
+safe(){ printf '%s' "${1:-}" | grep -Eq '^[A-Za-z0-9_]+$'; }
+status(){ Q="$(uci -q get $CFG.main.quarantine_new || echo 0)"; printf 'STATUS|%s\n' "$Q"; for S in $(uci show $CFG 2>/dev/null | sed -n "s/^$CFG\.\([^.=]*\)=device$/\1/p"); do printf 'DEVICE|%s|%s|%s|%s\n' "$S" "$(esc "$(uci -q get $CFG.$S.mac || true)")" "$(esc "$(uci -q get $CFG.$S.name || true)")" "$(esc "$(uci -q get $CFG.$S.group || true)")"; done; for S in $(uci show $CFG 2>/dev/null | sed -n "s/^$CFG\.\([^.=]*\)=group$/\1/p"); do printf 'GROUP|%s|%s|%s\n' "$S" "$(esc "$(uci -q get $CFG.$S.name || true)")" "$(esc "$(uci -q get $CFG.$S.mac || true)")"; done; }
+alias_set(){ MAC="${2:-}"; NAME="${3:-}"; GROUP="${4:-}"; macok "$MAC" || exit 1; KEY="dev_$(printf '%s' "$MAC" | tr -d ':' | tr A-F a-f)"; uci set $CFG.$KEY='device'; uci set $CFG.$KEY.mac="$MAC"; uci set $CFG.$KEY.name="$NAME"; [ -n "$GROUP" ] && uci set $CFG.$KEY.group="$GROUP" || uci -q delete $CFG.$KEY.group; uci commit $CFG; status; }
+group_save(){ ID="${2:-}"; NAME="${3:-}"; MACS="${4:-}"; if [ "$ID" = new ] || [ -z "$ID" ]; then ID="grp_$(date +%s)_$$"; else safe "$ID" || exit 1; fi; uci set $CFG.$ID='group'; uci set $CFG.$ID.name="$NAME"; uci -q delete $CFG.$ID.mac; OLDIFS="$IFS"; IFS=','; for M in $MACS; do macok "$M" && uci add_list $CFG.$ID.mac="$M"; done; IFS="$OLDIFS"; uci commit $CFG; status; }
+group_del(){ ID="${2:-}"; safe "$ID" || exit 1; [ "$(uci -q get $CFG.$ID)" = group ] || exit 1; uci -q delete $CFG.$ID; uci commit $CFG; status; }
+quarantine(){ EN="${2:-0}"; case "$EN" in 0|1) ;; *) exit 1;; esac; uci set $CFG.main='settings'; uci set $CFG.main.quarantine_new="$EN"; uci commit $CFG; status; }
+case "$ACTION" in status) status;; alias) alias_set "$@";; group-save) group_save "$@";; group-delete) group_del "$@";; quarantine) quarantine "$@";; *) exit 2;; esac

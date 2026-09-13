@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=mrouter-core
-PKG_VERSION:=1.0.0
+PKG_VERSION:=1.1.0
 PKG_RELEASE:=1
 PKG_LICENSE:=Apache-2.0
 PKGARCH:=all
@@ -12,11 +12,11 @@ define Package/mrouter-core
   SECTION:=net
   CATEGORY:=Network
   TITLE:=Mrouter-OS core services
-  DEPENDS:=+curl +ethtool +ip-full +netcat +dnsmasq-full +nlbwmon +pbr +wireguard-tools +openvpn-openssl +tailscale +adguardhome +https-dns-proxy +jsonfilter +ttyd +openssl-util
+  DEPENDS:=+curl +ethtool +ip-full +netcat +dnsmasq-full +nlbwmon +pbr +wireguard-tools +openvpn-openssl +tailscale +adguardhome +jsonfilter +ttyd +openssl-util +iwinfo +mwan3
 endef
 
 define Package/mrouter-core/description
- Core status, VPN, policy-routing, DDNS, filtering and monitoring helpers for Mrouter-OS. Network topology is never overwritten automatically.
+ Core status, VPN, policy routing, wireless, WAN monitoring, DDNS, filtering and monitoring helpers for Mrouter-OS. Existing OpenWrt network topology is preserved unless the user explicitly changes it.
 endef
 
 define Package/mrouter-core/conffiles
@@ -26,6 +26,10 @@ define Package/mrouter-core/conffiles
 /etc/config/mrouterparental
 /etc/config/mrouterfilter
 /etc/config/mrouterservices
+/etc/config/mrouterclients
+/etc/config/mrouterevents
+/etc/config/mrouterwan
+/etc/config/mrouterwgclient
 endef
 
 define Build/Compile
@@ -43,6 +47,16 @@ define Package/mrouter-core/install
 	$(CP) ./files/etc/uci-defaults/* $(1)/etc/uci-defaults/
 	$(INSTALL_DIR) $(1)/etc
 	$(INSTALL_DATA) ./files/etc/mrouter-release $(1)/etc/mrouter-release
+endef
+
+define Package/mrouter-core/postinst
+#!/bin/sh
+[ -n "$${IPKG_INSTROOT}" ] || {
+	/usr/libexec/mrouter-migrate >/dev/null 2>&1 || true
+	/etc/init.d/mrouter-observer enable >/dev/null 2>&1 || true
+	/etc/init.d/mrouter-observer restart >/dev/null 2>&1 || true
+}
+exit 0
 endef
 
 $(eval $(call BuildPackage,mrouter-core))

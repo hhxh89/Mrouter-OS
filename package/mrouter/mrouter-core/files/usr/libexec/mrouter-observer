@@ -1,0 +1,11 @@
+#!/bin/sh
+set -u
+EVENT=/usr/libexec/mrouter-events
+WAN=/usr/libexec/mrouter-wan
+STATE=/tmp/mrouter-observer.state
+SEEN=/tmp/mrouter-seen-macs
+emit(){ [ "$(uci -q get mrouterevents.main.enabled || echo 1)" = 1 ] || return 0; "$EVENT" add "$1" "$2" "$3" >/dev/null 2>&1 || true; }
+wan_state(){ I="$(uci -q get mrouterwan.main.primary || echo wan)"; UP=0; ubus call network.interface.$I status 2>/dev/null | jsonfilter -e '@.up' 2>/dev/null | grep -q true && UP=1 || true; printf '%s|%s' "$I" "$UP"; }
+check_wan(){ N="$(wan_state)"; O="$(cat "$STATE" 2>/dev/null || true)"; if [ -n "$O" ] && [ "$N" != "$O" ] && [ "$(uci -q get mrouterevents.main.wan || echo 1)" = 1 ]; then I="${N%%|*}"; U="${N##*|}"; [ "$U" = 1 ] && emit info wan "$I Internet interface recovered" || emit critical wan "$I Internet interface is down"; fi; printf '%s' "$N" > "$STATE"; }
+check_devices(){ CUR=/tmp/mrouter-current-macs; : > "$CUR"; [ -r /tmp/dhcp.leases ] && awk '{print toupper($2)}' /tmp/dhcp.leases | grep -E '^([0-9A-F]{2}:){5}[0-9A-F]{2}$' | sort -u > "$CUR" || true; if [ ! -r "$SEEN" ]; then cp "$CUR" "$SEEN"; return; fi; while read -r M; do grep -qx "$M" "$SEEN" && continue; NAME="$(awk -v m="$M" 'toupper($2)==m{print $4;exit}' /tmp/dhcp.leases 2>/dev/null)"; IP="$(awk -v m="$M" 'toupper($2)==m{print $3;exit}' /tmp/dhcp.leases 2>/dev/null)"; [ "$(uci -q get mrouterevents.main.new_device || echo 1)" = 1 ] && emit warning device "New device ${NAME:-Unknown} $IP $M" || true; if [ "$(uci -q get mrouterclients.main.quarantine_new || echo 0)" = 1 ]; then LANDEV="$(ubus call network.interface.lan status 2>/dev/null | jsonfilter -e '@.l3_device' 2>/dev/null)"; IPDEV="$(ip -4 route get "$IP" 2>/dev/null | awk '{for(i=1;i<=NF;i++)if($i=="dev"){print $(i+1);exit}}')"; if [ -n "$IP" ] && [ -n "$LANDEV" ] && [ "$IPDEV" = "$LANDEV" ]; then /usr/libexec/mrouter-client-action block "$M" 1 "$IP" "$NAME" lan >/dev/null 2>&1 || true; emit warning security "New LAN device quarantined: ${NAME:-Unknown} $M"; fi; fi; done < "$CUR"; cat "$SEEN" "$CUR" 2>/dev/null | sort -u > "$SEEN.tmp" && mv "$SEEN.tmp" "$SEEN"; }
+while :; do "$WAN" sample >/dev/null 2>&1 || true; check_wan; check_devices; sleep 60; done

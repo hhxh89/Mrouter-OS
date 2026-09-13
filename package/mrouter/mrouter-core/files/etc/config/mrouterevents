@@ -1,0 +1,5 @@
+config settings 'main'
+	option enabled '1'
+	option new_device '1'
+	option wan '1'
+	option vpn '1'

@@ -1,2 +1,9 @@
 #!/bin/sh
-exec /usr/libexec/mrouter-policy status
+/usr/libexec/mrouter-policy status
+RC=$?
+for S in $(uci show mrouterpolicy 2>/dev/null | sed -n 's/^mrouterpolicy\.\([^.=]*\)=policy$/\1/p'); do
+    ST="$(uci -q get mrouterpolicy.$S.runtime_state || echo unknown)"
+    TG="$(uci -q get mrouterpolicy.$S.runtime_target || uci -q get mrouterpolicy.$S.desired_target || true)"
+    printf 'RUNTIME|%s|%s|%s\n' "$S" "$ST" "$TG"
+done
+exit "$RC"
