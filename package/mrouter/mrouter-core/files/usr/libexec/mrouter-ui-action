@@ -7,6 +7,8 @@ shift || true
 case "$SERVICE" in
   internet) H=/usr/libexec/mrouter-internet-info ;;
   traffic) H=/usr/libexec/mrouter-traffic-live ;;
+  client-data) H=/usr/libexec/mrouter-client-data ;;
+  iot-info) H=/usr/libexec/mrouter-iot-info ;;
   clients) H=/usr/libexec/mrouter-clients ;;
   client-action) H=/usr/libexec/mrouter-client-action ;;
   wireless) H=/usr/libexec/mrouter-wireless ;;
@@ -17,15 +19,26 @@ case "$SERVICE" in
   firewall) H=/usr/libexec/mrouter-firewall ;;
   support) H=/usr/libexec/mrouter-support ;;
   adguard) H=/usr/libexec/mrouter-adguard ;;
+  status-adguard) H=/usr/libexec/mrouter-status-adguard ;;
   tailscale) H=/usr/libexec/mrouter-tailscale ;;
+  status-tailscale) H=/usr/libexec/mrouter-status-tailscale ;;
   wireguard) H=/usr/libexec/mrouter-wireguard ;;
+  status-wireguard) H=/usr/libexec/mrouter-status-wireguard ;;
   wireguard-client) H=/usr/libexec/mrouter-wireguard-client ;;
+  status-wireguard-client) H=/usr/libexec/mrouter-status-wireguard-client ;;
   openvpn) H=/usr/libexec/mrouter-openvpn ;;
+  status-openvpn) H=/usr/libexec/mrouter-status-openvpn ;;
   policy) H=/usr/libexec/mrouter-policy ;;
+  status-policy) H=/usr/libexec/mrouter-status-policy ;;
   ddns) H=/usr/libexec/mrouter-ddns ;;
+  status-ddns) H=/usr/libexec/mrouter-status-ddns ;;
   ports) H=/usr/libexec/mrouter-ports ;;
+  status-ports) H=/usr/libexec/mrouter-status-ports ;;
   parental) H=/usr/libexec/mrouter-parental ;;
+  status-parental) H=/usr/libexec/mrouter-status-parental ;;
   content-filter) H=/usr/libexec/mrouter-content-filter ;;
+  status-content-filter) H=/usr/libexec/mrouter-status-content-filter ;;
+  status-health) H=/usr/libexec/mrouter-status-health ;;
   services) H=/usr/libexec/mrouter-services ;;
   advanced) H=/usr/libexec/mrouter-advanced ;;
   ui-config) H=/usr/libexec/mrouter-ui-config ;;
