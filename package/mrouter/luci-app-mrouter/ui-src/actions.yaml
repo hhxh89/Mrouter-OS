@@ -114,6 +114,9 @@ services:
   ui-config:
     helper: /usr/libexec/mrouter-ui-config
     mode: readwrite
+  upload:
+    helper: /usr/libexec/mrouter-upload
+    mode: write
 security:
   arbitrary_helpers: false
   arbitrary_shell: false
