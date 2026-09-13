@@ -30,20 +30,30 @@ set_values(){ ensure; accent="$1"; density="$2"; sidebar="$3"; content="$4"; for
 kind_ok(){ case "$1" in pages|navigation|login) return 0;; *) return 1;; esac; }
 json_version(){ jsonfilter -i "$1" -e '@.version' 2>/dev/null || true; }
 validate_pages(){
-    # User YAML/JSON may rearrange native schema blocks but may never load JS components,
-    # legacy LuCI views, arbitrary commands or raw HTML.
     if grep -Eq '"type"[[:space:]]*:[[:space:]]*"legacy"|"component"[[:space:]]*:|"javascript"[[:space:]]*:|"shell"[[:space:]]*:|"command"[[:space:]]*:' "$1"; then
         echo 'ERROR|Pages may use only native Mrouter YAML blocks and registered service actions'
-        exit 7
+        return 7
     fi
     grep -o '"service"[[:space:]]*:[[:space:]]*"[^"]*"' "$1" 2>/dev/null | sed 's/.*"service"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/' | while read -r s; do
-        case "$s" in internet|traffic|client-data|iot-info|clients|client-action|wireless|networks|events|wan|dhcp|firewall|support|adguard|status-adguard|tailscale|status-tailscale|wireguard|status-wireguard|wireguard-client|status-wireguard-client|openvpn|status-openvpn|policy|status-policy|ddns|status-ddns|ports|status-ports|parental|status-parental|content-filter|status-content-filter|status-health|services|advanced|ui-config) :;; *) echo "ERROR|Unregistered service: $s"; exit 7;; esac
+        case "$s" in internet|internet-summary|traffic|client-data|iot-info|clients|client-action|wireless|networks|events|wan|dhcp|firewall|support|adguard|status-adguard|tailscale|status-tailscale|wireguard|status-wireguard|wireguard-client|status-wireguard-client|openvpn|status-openvpn|policy|status-policy|ddns|status-ddns|ports|status-ports|parental|status-parental|content-filter|status-content-filter|status-health|services|advanced|ui-config|upload) :;; *) echo "ERROR|Unregistered service: $s"; exit 7;; esac
     done
 }
-validate_navigation(){ grep -o '"href"[[:space:]]*:[[:space:]]*"[^"]*"' "$1" 2>/dev/null | sed 's/.*"href"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/' | while read -r h; do case "$h" in /cgi-bin/luci/*) :;; *) echo "ERROR|Unsafe navigation href: $h"; exit 8;; esac; done; }
-apply_doc(){ kind="$1"; kind_ok "$kind" || { echo 'ERROR|Unknown document'; exit 2; }; y="/tmp/mrouter-ui-$kind.yaml"; j="/tmp/mrouter-ui-$kind.json"; [ -s "$y" ] && [ -s "$j" ] || { echo 'ERROR|Editor staging files missing'; exit 2; }; [ "$(json_version "$j")" = 1 ] || { echo 'ERROR|JSON version must be 1'; exit 2; }; case "$kind" in pages) validate_pages "$j";; navigation) validate_navigation "$j";; esac; cp "$y" "$ROOT/$kind.yaml"; cp "$j" "$ROOT/$kind.json"; cp "$j" "$WEB/user-$kind.json"; chmod 0644 "$ROOT/$kind.yaml" "$ROOT/$kind.json" "$WEB/user-$kind.json"; rm -f "$y" "$j"; echo "OK|$kind applied"; }
+validate_navigation(){ grep -o '"href"[[:space:]]*:[[:space:]]*"[^"]*"' "$1" 2>/dev/null | sed 's/.*"href"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/' | while read -r h; do case "$h" in /cgi-bin/luci/*|https://*|http://*) :;; *) echo "ERROR|Unsafe navigation href: $h"; exit 8;; esac; done; }
+validate_doc_file(){ kind="$1"; j="$2"; [ "$(json_version "$j")" = 1 ] || { echo 'ERROR|Document version must be 1'; return 2; }; case "$kind" in pages) validate_pages "$j";; navigation) validate_navigation "$j";; login) :;; esac; }
+apply_doc(){ kind="$1"; kind_ok "$kind" || { echo 'ERROR|Unknown document'; exit 2; }; y="/tmp/mrouter-ui-$kind.yaml"; j="/tmp/mrouter-ui-$kind.json"; [ -s "$y" ] && [ -s "$j" ] || { echo 'ERROR|Editor staging files missing'; exit 2; }; validate_doc_file "$kind" "$j" || exit $?; ensure; umask 077; [ -s "$ROOT/$kind.yaml" ] && cp "$ROOT/$kind.yaml" "$ROOT/.last-good-$kind.yaml" || true; [ -s "$ROOT/$kind.json" ] && cp "$ROOT/$kind.json" "$ROOT/.last-good-$kind.json" || true; cp "$y" "$ROOT/.$kind.yaml.new"; cp "$j" "$ROOT/.$kind.json.new"; mv "$ROOT/.$kind.yaml.new" "$ROOT/$kind.yaml"; mv "$ROOT/.$kind.json.new" "$ROOT/$kind.json"; cp "$j" "$WEB/.user-$kind.json.new"; chmod 0644 "$WEB/.user-$kind.json.new"; mv "$WEB/.user-$kind.json.new" "$WEB/user-$kind.json"; chmod 0644 "$ROOT/$kind.yaml" "$ROOT/$kind.json"; rm -f "$y" "$j"; echo "OK|$kind applied"; }
 export_doc(){ kind="$1"; kind_ok "$kind" || { echo 'ERROR|Unknown document'; exit 2; }; ensure; if [ -s "$ROOT/$kind.yaml" ]; then cat "$ROOT/$kind.yaml"; elif [ -s "$DEFAULT/$kind.yaml" ]; then cat "$DEFAULT/$kind.yaml"; else echo 'ERROR|Default YAML missing'; exit 2; fi; }
+save_text(){ kind="$1"; yaml="$2"; json="$3"; kind_ok "$kind" || { echo 'ERROR|Unknown document'; exit 2; }; [ -n "$yaml" ] && [ -n "$json" ] || { echo 'ERROR|YAML and compiled JSON are required'; exit 2; }; ensure; umask 077; y="/tmp/mrouter-ui-$kind.yaml"; j="/tmp/mrouter-ui-$kind.json"; printf '%s\n' "$yaml" >"$y"; printf '%s\n' "$json" >"$j"; validate_doc_file "$kind" "$j" || { rc=$?; rm -f "$y" "$j"; exit "$rc"; }; apply_doc "$kind"; }
+validate_text(){ kind="$1"; json="$2"; kind_ok "$kind" || { echo 'ERROR|Unknown document'; exit 2; }; ensure; umask 077; j="/tmp/mrouter-ui-validate-$kind.json"; printf '%s\n' "$json" >"$j"; validate_doc_file "$kind" "$j"; rc=$?; rm -f "$j"; [ "$rc" = 0 ] && echo "OK|$kind valid"; return "$rc"; }
 reset_doc(){ kind="$1"; kind_ok "$kind" || { echo 'ERROR|Unknown document'; exit 2; }; rm -f "$ROOT/$kind.yaml" "$ROOT/$kind.json" "$WEB/user-$kind.json" "/tmp/mrouter-ui-$kind.yaml" "/tmp/mrouter-ui-$kind.json"; echo "OK|$kind reset"; }
 reset_appearance(){ uci -q delete "$CFG.$SEC" || true; uci commit "$CFG" 2>/dev/null || true; rm -f "$AP_YAML" "$AP_JSON"; ensure; write_appearance; echo 'OK|reset'; }
 cmd="${1:-status}"
-case "$cmd" in status) status ;; set) shift; [ "$#" -eq 7 ] || { echo 'ERROR|Expected 7 values'; exit 2; }; set_values "$@" ;; export) [ "$#" -eq 2 ] || { echo 'ERROR|Expected document name'; exit 2; }; export_doc "$2" ;; apply) [ "$#" -eq 2 ] || { echo 'ERROR|Expected document name'; exit 2; }; ensure; apply_doc "$2" ;; reset) if [ "$#" -eq 1 ]; then reset_appearance; else reset_doc "$2"; fi ;; *) echo 'ERROR|Unknown command'; exit 2 ;; esac
+case "$cmd" in
+ status) status ;;
+ set) shift; [ "$#" -eq 7 ] || { echo 'ERROR|Expected 7 values'; exit 2; }; set_values "$@" ;;
+ export) [ "$#" -eq 2 ] || { echo 'ERROR|Expected document name'; exit 2; }; export_doc "$2" ;;
+ apply) [ "$#" -eq 2 ] || { echo 'ERROR|Expected document name'; exit 2; }; ensure; apply_doc "$2" ;;
+ save) [ "$#" -eq 4 ] || { echo 'ERROR|Expected kind, YAML and JSON'; exit 2; }; save_text "$2" "$3" "$4" ;;
+ validate) [ "$#" -eq 3 ] || { echo 'ERROR|Expected kind and JSON'; exit 2; }; validate_text "$2" "$3" ;;
+ reset) if [ "$#" -eq 1 ]; then reset_appearance; else reset_doc "$2"; fi ;;
+ *) echo 'ERROR|Unknown command'; exit 2 ;;
+esac
