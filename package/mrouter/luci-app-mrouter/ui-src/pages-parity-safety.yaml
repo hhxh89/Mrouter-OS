@@ -1,0 +1,38 @@
+version: 1
+pages:
+  networks:
+    title: Networks
+    subtitle: Manage Mrouter networks without replacing existing OpenWrt configuration
+    sources:
+      status: { service: networks, action: status, parser: pipe }
+    layout:
+    - type: records
+      title: Configured Networks
+      source: status
+      tags: [NET]
+      columns: [Name, Protocol, Device, IP, Netmask, Up, Firewall zone, Mrouter managed]
+    - type: notice
+      text: Existing OpenWrt networks such as LAN, WAN and WAN6 are protected. Mrouter only deletes networks that carry its managed marker.
+    - type: form
+      title: Create Network
+      fields:
+      - { id: id, type: text, label: Network name, placeholder: guest }
+      - { id: type, type: select, label: Type, options: [{value: guest, label: Guest}, {value: iot, label: IoT}, {value: lan, label: Trusted LAN}, {value: custom, label: Custom}] }
+      - { id: cidr, type: text, label: Router address / prefix, placeholder: 192.168.30.1/24 }
+      - { id: vlan, type: number, label: VLAN ID, default: 0, min: 0, max: 4094, help: Leave 0 when no VLAN tag is required. }
+      - { id: parent, type: text, label: Parent device, help: Required only when a VLAN ID is used. }
+      - { id: dhcp, type: toggle, label: DHCP server, default: true }
+      - { id: internet, type: toggle, label: Internet access, default: true }
+      actions:
+      - { label: Create Network, service: networks, action: create, args: [$field.id, $field.type, $field.cidr, $field.vlan, $field.parent, $field.dhcp, $field.internet], style: primary, confirm: 'Create this additional network?', reload: true }
+    - type: form
+      title: Delete Mrouter-created Network
+      text: Core and externally-created OpenWrt networks are rejected by the backend even if their name is entered here.
+      fields:
+      - { id: id, type: text, label: Mrouter network name, placeholder: guest }
+      actions:
+      - { label: Delete Managed Network, service: networks, action: delete, args: [$field.id], style: danger, confirm: 'Delete this Mrouter-created network and its managed DHCP/firewall objects?', reload: true }
+    - type: actions
+      title: Configuration Safety
+      items:
+      - { label: Create Network Backup, service: networks, action: backup, style: secondary, output: true }
