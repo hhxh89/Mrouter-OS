@@ -49,18 +49,24 @@ case "$ACTION" in *[!A-Za-z0-9_.:-]*|'') echo 'ERROR|Invalid action'; exit 2;; e
 
 case "$SERVICE:$ACTION" in
   internet:refresh|internet:status|traffic:status|client-data:snapshot|client-data:snapshot-iot|iot-info:status|\
-  clients:status|clients:alias|clients:quarantine|client-action:block|client-action:reserve|\
+  clients:status|clients:alias|clients:quarantine|clients:group-save|clients:group-delete|client-action:block|client-action:reserve|\
   wireless:status|wireless:add-ssid|wireless:radio-save|wireless:ssid-save|wireless:delete-ssid|\
-  networks:status|networks:create|networks:delete|events:status|events:settings|events:clear|\
-  wan:status|dhcp:status|dhcp:scope-save|dhcp:add-reservation|dhcp:delete-reservation|\
-  firewall:status|support:status|support:refresh|adguard:status|adguard:start|adguard:stop|adguard:restart|\
-  status-adguard:status|tailscale:status|tailscale:up|tailscale:down|status-tailscale:status|\
-  wireguard:status|status-wireguard:status|wireguard-client:status|wireguard-client:connect|wireguard-client:disconnect|wireguard-client:delete|\
-  status-wireguard-client:status|openvpn:status|openvpn:select|openvpn:connect|openvpn:disconnect|openvpn:credentials|\
-  status-openvpn:status|policy:status|policy:reconcile|status-policy:status|ddns:status|status-ddns:status|\
-  ports:status|status-ports:status|parental:status|status-parental:status|content-filter:status|status-content-filter:status|\
-  status-health:status|services:status|\
+  networks:status|networks:create|networks:delete|networks:backup|events:status|events:settings|events:clear|\
+  wan:status|wan:history|wan:save|wan:disable|wan:sample|dhcp:status|dhcp:scope-save|dhcp:add-reservation|dhcp:delete-reservation|\
+  firewall:status|firewall:add-forward|firewall:delete-forward|firewall:upnp|support:status|support:refresh|support:bundle|\
+  adguard:status|adguard:start|adguard:stop|adguard:restart|status-adguard:status|\
+  tailscale:status|tailscale:up|tailscale:down|tailscale:bind|tailscale:disable|tailscale:finalize|tailscale:apply|status-tailscale:status|\
+  wireguard:status|wireguard:generate|wireguard:view|wireguard:revoke|wireguard:restart|status-wireguard:status|\
+  wireguard-client:status|wireguard-client:import|wireguard-client:connect|wireguard-client:disconnect|wireguard-client:delete|wireguard-client:rename|status-wireguard-client:status|\
+  openvpn:status|openvpn:import|openvpn:select|openvpn:connect|openvpn:disconnect|openvpn:credentials|openvpn:remove|status-openvpn:status|\
+  policy:status|policy:reconcile|policy:service|policy:add|policy:delete|policy:toggle|policy:move|policy:group-add|policy:group-delete|policy:test|status-policy:status|\
+  ddns:status|ddns:add|ddns:toggle|ddns:force|ddns:delete|status-ddns:status|\
+  ports:status|ports:set|ports:swap|ports:clear-pending|status-ports:status|\
+  parental:status|parental:apply|parental:enable|parental:save|parental:pause|parental:delete|status-parental:status|\
+  content-filter:status|content-filter:apply|content-filter:enable|content-filter:save|status-content-filter:status|\
+  status-health:status|services:status|services:add|services:delete|services:test|services:dns-pihole|services:dns-mrouter|\
   advanced:snapshot|advanced:sqm-save|advanced:system-save|advanced:ssh-save|advanced:service-action|advanced:diagnostics|advanced:logs|advanced:processes|advanced:packages|advanced:keys|\
+  advanced:password-set|advanced:key-add|advanced:key-delete|advanced:web-save|advanced:route-add|advanced:route-delete|advanced:pkg-refresh|advanced:pkg-install|advanced:pkg-remove|advanced:pkg-upgrade|advanced:backup-create|\
   ui-config:status|ui-config:set|ui-config:export|ui-config:apply|ui-config:reset) ;;
   *) echo "ERROR|Action not allowed: $SERVICE:$ACTION"; exit 3 ;;
 esac
