@@ -1,0 +1,32 @@
+version: 1
+schema:
+  page_renderers:
+    - yaml
+  block_types:
+    - legacy
+    - heading
+    - notice
+    - stats
+    - card
+    - form
+    - table
+    - repeater
+    - component
+  field_types:
+    - text
+    - password
+    - number
+    - select
+    - toggle
+    - textarea
+    - colour
+  safety:
+    arbitrary_javascript: false
+    arbitrary_shell: false
+    html_from_yaml: false
+    backend_actions_must_use_registry: true
+    href_prefix: /cgi-bin/luci/
+  runtime:
+    defaults: /usr/share/mrouter/ui/defaults
+    overrides: /etc/mrouter/ui.d
+    generated_web: /www/luci-static/mrouter-ui
