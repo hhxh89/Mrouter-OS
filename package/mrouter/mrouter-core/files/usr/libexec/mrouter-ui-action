@@ -43,6 +43,7 @@ case "$SERVICE" in
   services) H=/usr/libexec/mrouter-services ;;
   advanced) H=/usr/libexec/mrouter-advanced ;;
   ui-config) H=/usr/libexec/mrouter-ui-config ;;
+  upload) H=/usr/libexec/mrouter-upload ;;
   *) echo 'ERROR|Unknown service'; exit 2 ;;
 esac
 [ -x "$H" ] || { echo "ERROR|Service unavailable: $SERVICE"; exit 127; }
@@ -68,7 +69,8 @@ case "$SERVICE:$ACTION" in
   status-health:status|services:status|services:add|services:delete|services:test|services:dns-pihole|services:dns-mrouter|\
   advanced:snapshot|advanced:sqm-save|advanced:system-save|advanced:ssh-save|advanced:service-action|advanced:diagnostics|advanced:logs|advanced:processes|advanced:packages|advanced:keys|\
   advanced:password-set|advanced:key-add|advanced:key-delete|advanced:web-save|advanced:route-add|advanced:route-delete|advanced:pkg-refresh|advanced:pkg-install|advanced:pkg-remove|advanced:pkg-upgrade|advanced:backup-create|\
-  ui-config:status|ui-config:set|ui-config:export|ui-config:apply|ui-config:reset) ;;
+  ui-config:status|ui-config:set|ui-config:export|ui-config:apply|ui-config:save|ui-config:validate|ui-config:reset|\
+  upload:start|upload:chunk|upload:finish|upload:abort) ;;
   *) echo "ERROR|Action not allowed: $SERVICE:$ACTION"; exit 3 ;;
 esac
 
