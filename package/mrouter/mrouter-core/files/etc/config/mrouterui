@@ -1,0 +1,8 @@
+config ui 'appearance'
+	option accent '#007AFF'
+	option density 'compact'
+	option sidebar_width '212'
+	option content_max_width '1440'
+	option form_max_width '360'
+	option card_radius '14'
+	option compact_forms '1'
