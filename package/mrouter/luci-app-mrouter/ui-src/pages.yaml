@@ -4,310 +4,654 @@ pages:
     route: admin/dashboard
     order: 1
     title: Internet
-    subtitle: WAN status, topology, ports and live traffic
+    subtitle: Connection, WAN quality, traffic and physical ports
     renderer: yaml
+    sources:
+      internet: { service: internet, action: refresh, parser: json }
+      wan: { service: wan, action: status, parser: pipe }
+      traffic: { service: traffic, action: status, parser: pipe }
     layout:
-      - type: legacy
-        component: internet
+      - type: json
+        title: Connection Overview
+        source: internet
+        fields: [online, public_ip, local_ip, gateway, interface, type, dns, uptime_seconds]
+        labels: { online: Online, public_ip: Public IP, local_ip: WAN IP, gateway: Gateway, interface: Interface, type: Connection type, dns: DNS, uptime_seconds: Uptime seconds }
+        array: ports
+      - type: records
+        title: WAN Quality & Multi-WAN
+        source: wan
+      - type: records
+        title: Live Traffic Counters
+        source: traffic
+
   clients:
     route: admin/connected
     order: 2
     title: Clients
-    subtitle: Real LAN clients, names, groups and traffic totals
+    subtitle: LAN devices, traffic, reservations and access controls
     renderer: yaml
+    sources:
+      clients: { service: client-data, action: snapshot, parser: pipe }
+      metadata: { service: clients, action: status, parser: pipe }
     layout:
-      - type: legacy
-        component: clients
+      - type: records
+        title: Connected Clients
+        source: clients
+      - type: records
+        title: Names, Groups & Quarantine
+        source: metadata
+      - type: form
+        title: Client Action
+        fields:
+          - { id: action, type: select, label: Action, options: [{value: block, label: Block / unblock}, {value: reserve, label: Reserve / release IP}] }
+          - { id: mac, type: text, label: MAC address, placeholder: 'AA:BB:CC:DD:EE:FF' }
+          - { id: enabled, type: toggle, label: Enable action, default: true }
+          - { id: ip, type: text, label: Current IP }
+          - { id: name, type: text, label: Device name }
+        actions:
+          - { label: Apply Client Action, service: client-action, action: '$field.action', args: ['$field.mac', '$field.enabled', '$field.ip', '$field.name', lan], style: primary, reload: true }
+      - type: form
+        title: Friendly Name / Group
+        fields:
+          - { id: mac, type: text, label: MAC address }
+          - { id: name, type: text, label: Friendly name }
+          - { id: group, type: text, label: Group }
+        actions:
+          - { label: Save Name / Group, service: clients, action: alias, args: ['$field.mac', '$field.name', '$field.group'], style: primary, reload: true }
+
   iot-clients:
     route: admin/iot
     order: 3
     title: IoT Clients
-    subtitle: Isolated and managed IoT devices
+    subtitle: Isolated devices on the Mrouter IoT network
     renderer: yaml
+    sources:
+      iot: { service: iot-info, action: status, parser: pipe }
+      clients: { service: client-data, action: snapshot-iot, parser: pipe }
     layout:
-      - type: legacy
-        component: iot-clients
+      - type: records
+        title: IoT Network
+        source: iot
+      - type: records
+        title: IoT Devices & Traffic
+        source: clients
+      - type: form
+        title: IoT Client Action
+        fields:
+          - { id: action, type: select, label: Action, options: [{value: block, label: Block / unblock}, {value: reserve, label: Reserve / release IP}] }
+          - { id: mac, type: text, label: MAC address }
+          - { id: enabled, type: toggle, label: Enable action, default: true }
+          - { id: ip, type: text, label: Current IP }
+          - { id: name, type: text, label: Device name }
+        actions:
+          - { label: Apply, service: client-action, action: '$field.action', args: ['$field.mac', '$field.enabled', '$field.ip', '$field.name', iot], reload: true }
+
   wireless:
     route: admin/wireless
     order: 4
     title: Wireless
-    subtitle: Radios, SSIDs and Wi-Fi status
+    subtitle: Radios, SSIDs and Wi-Fi configuration
     renderer: yaml
+    sources:
+      wireless: { service: wireless, action: status, parser: pipe }
     layout:
-      - type: legacy
-        component: wireless
+      - type: records
+        title: Radios & Wi-Fi Networks
+        source: wireless
+      - type: form
+        title: Add Wi-Fi Network
+        fields:
+          - { id: radio, type: text, label: Radio, placeholder: radio0 }
+          - { id: network, type: text, label: Network, default: lan }
+          - { id: ssid, type: text, label: SSID }
+          - { id: encryption, type: select, label: Encryption, options: [{value: sae-mixed, label: WPA2/WPA3}, {value: sae, label: WPA3}, {value: psk2, label: WPA2}, {value: psk-mixed, label: WPA/WPA2}, {value: none, label: Open}] }
+          - { id: password, type: password, label: Password }
+        actions:
+          - { label: Add SSID, service: wireless, action: add-ssid, args: ['$field.radio', '$field.network', '$field.ssid', '$field.encryption', '$field.password'], reload: true }
+      - type: form
+        title: Edit Radio
+        fields:
+          - { id: radio, type: text, label: Radio }
+          - { id: enabled, type: toggle, label: Enabled, default: true }
+          - { id: channel, type: text, label: Channel, default: auto }
+          - { id: mode, type: text, label: Mode / width }
+          - { id: country, type: text, label: Country }
+          - { id: txpower, type: number, label: TX power }
+        actions:
+          - { label: Apply Radio, service: wireless, action: radio-save, args: ['$field.radio', '$field.enabled', '$field.channel', '$field.mode', '$field.country', '$field.txpower'], reload: true }
+
   events:
     route: admin/events
     order: 20
     title: Events & Alerts
     subtitle: Local WAN, VPN, security and new-device events
     renderer: yaml
+    sources:
+      events: { service: events, action: status, parser: pipe, fields: [enabled, new_device, wan, vpn] }
     layout:
-      - type: legacy
-        component: events
+      - type: form
+        title: Monitoring
+        fields:
+          - { id: enabled, type: toggle, label: Events, default_from: events.enabled }
+          - { id: new_device, type: toggle, label: New devices, default_from: events.new_device }
+          - { id: wan, type: toggle, label: WAN changes, default_from: events.wan }
+          - { id: vpn, type: toggle, label: VPN changes, default_from: events.vpn }
+        actions:
+          - { label: Save Monitoring, service: events, action: settings, args: ['$field.enabled', '$field.new_device', '$field.wan', '$field.vpn'], success: Monitoring saved., reload: true }
+      - type: records
+        title: Recent Events
+        source: events
+        tags: [EVENT]
+        columns: [Timestamp, Severity, Type, Message]
+        empty: No Mrouter events recorded.
+      - type: actions
+        items:
+          - { label: Clear History, service: events, action: clear, style: danger, confirm: Clear local Mrouter event history?, reload: true }
+
   vpn-dashboard:
     route: admin/vpn/dashboard
     order: 1
-    title: VPN
-    subtitle: OpenVPN, WireGuard, Tailscale and policy status
+    title: VPN Dashboard
+    subtitle: OpenVPN, WireGuard, Tailscale and policy state
     renderer: yaml
+    sources:
+      openvpn: { service: status-openvpn, action: status, parser: pipe }
+      wireguard: { service: status-wireguard, action: status, parser: pipe }
+      wgclients: { service: status-wireguard-client, action: status, parser: pipe }
+      tailscale: { service: status-tailscale, action: status, parser: pipe }
+      policy: { service: status-policy, action: status, parser: pipe }
     layout:
-      - type: legacy
-        component: vpn-dashboard
+      - { type: records, title: OpenVPN, source: openvpn }
+      - { type: records, title: WireGuard Remote Access, source: wireguard }
+      - { type: records, title: WireGuard VPN Clients, source: wgclients }
+      - { type: records, title: Tailscale, source: tailscale }
+      - { type: records, title: Policy Routing, source: policy }
+
   openvpn:
     route: admin/vpn/openvpn
     order: 2
     title: OpenVPN
+    subtitle: Imported profiles, credentials and connection state
     renderer: yaml
+    sources:
+      status: { service: openvpn, action: status, parser: pipe }
     layout:
-      - type: legacy
-        component: openvpn
+      - { type: records, title: Profiles & Connection, source: status }
+      - type: form
+        title: Select / Connect Profile
+        fields:
+          - { id: profile, type: text, label: Profile ID }
+        actions:
+          - { label: Use Profile, service: openvpn, action: select, args: ['$field.profile'], reload: true }
+          - { label: Connect, service: openvpn, action: connect, style: primary, reload: true }
+          - { label: Disconnect, service: openvpn, action: disconnect, style: secondary, reload: true }
+      - type: form
+        title: Credentials
+        fields:
+          - { id: username, type: text, label: Username }
+          - { id: password, type: password, label: Password }
+        actions:
+          - { label: Save Credentials, service: openvpn, action: credentials, args: ['$field.username', '$field.password'], reload: true }
+
   wireguard:
     route: admin/vpn/wireguard
     order: 3
     title: WireGuard
+    subtitle: Remote-access server and outbound WireGuard VPN clients
     renderer: yaml
+    sources:
+      server: { service: wireguard, action: status, parser: pipe }
+      clients: { service: wireguard-client, action: status, parser: pipe }
     layout:
-      - type: legacy
-        component: wireguard
+      - { type: records, title: Remote Access, source: server }
+      - { type: records, title: VPN Client Profiles, source: clients }
+      - type: form
+        title: VPN Client Control
+        fields:
+          - { id: profile, type: text, label: Profile ID }
+        actions:
+          - { label: Connect, service: wireguard-client, action: connect, args: ['$field.profile'], reload: true }
+          - { label: Disconnect, service: wireguard-client, action: disconnect, args: ['$field.profile'], style: secondary, reload: true }
+          - { label: Delete, service: wireguard-client, action: delete, args: ['$field.profile'], style: danger, confirm: Delete this WireGuard client profile?, reload: true }
+
   tailscale:
     route: admin/vpn/tailscale
     order: 4
     title: Tailscale
+    subtitle: Remote access, subnet routes and exit-node settings
     renderer: yaml
+    sources:
+      status: { service: tailscale, action: status, parser: pipe }
     layout:
-      - type: legacy
-        component: tailscale
+      - { type: records, title: Tailscale Status, source: status }
+      - type: actions
+        title: Connection
+        items:
+          - { label: Connect / Login, service: tailscale, action: up, style: primary, reload: true }
+          - { label: Disconnect, service: tailscale, action: down, style: secondary, reload: true }
+
   policy:
     route: admin/vpn/policy-routing
     order: 5
     title: Policy Routing
+    subtitle: Send selected clients and destinations through WAN or VPN
     renderer: yaml
+    sources:
+      status: { service: policy, action: status, parser: pipe }
     layout:
-      - type: legacy
-        component: policy
+      - { type: records, title: Policies & Runtime State, source: status }
+      - type: actions
+        items:
+          - { label: Reconcile Policies, service: policy, action: reconcile, style: primary, reload: true }
+
   local-services:
     route: admin/services/local-services
     order: 1
     title: Local Services
+    subtitle: Locally hosted services and quick access links
     renderer: yaml
+    sources:
+      services: { service: services, action: status, parser: pipe }
     layout:
-      - type: legacy
-        component: local-services
+      - { type: records, title: Services, source: services }
+
   adguard:
     route: admin/services/adguardhome
     order: 2
     title: AdGuard Home
+    subtitle: Local DNS filtering service
     renderer: yaml
+    sources:
+      status: { service: adguard, action: status, parser: pipe }
     layout:
-      - type: legacy
-        component: adguard
+      - { type: records, title: Service Status, source: status }
+      - type: actions
+        items:
+          - { label: Start, service: adguard, action: start, style: primary, reload: true }
+          - { label: Stop, service: adguard, action: stop, style: secondary, reload: true }
+          - { label: Restart, service: adguard, action: restart, style: secondary, reload: true }
+
   ddns:
     route: admin/services/ddns
     order: 3
     title: Dynamic DNS
+    subtitle: Dynamic DNS profiles and update status
     renderer: yaml
+    sources:
+      status: { service: ddns, action: status, parser: pipe }
     layout:
-      - type: legacy
-        component: ddns
+      - { type: records, title: Dynamic DNS, source: status }
+
   parental:
     route: admin/protection/parental
     order: 1
     title: Parental Control
+    subtitle: Client schedules and access controls
     renderer: yaml
+    sources:
+      status: { service: parental, action: status, parser: pipe }
     layout:
-      - type: legacy
-        component: parental
+      - { type: records, title: Parental Rules, source: status }
+
   content-filter:
     route: admin/protection/content-filter
     order: 2
     title: Content Filter
+    subtitle: Local DNS category filtering and client policies
     renderer: yaml
+    sources:
+      status: { service: content-filter, action: status, parser: pipe }
     layout:
-      - type: legacy
-        component: content-filter
+      - { type: records, title: Filter Rules, source: status }
+
   ports:
     route: admin/advanced/network-settings/ports
     order: 1
     title: Port Assignment
+    subtitle: Physical interfaces and Mrouter role assignment
     renderer: yaml
+    sources:
+      status: { service: ports, action: status, parser: pipe }
     layout:
-      - type: legacy
-        component: ports
+      - { type: records, title: Ethernet Ports, source: status }
+
   networks:
     route: admin/advanced/network-settings/interfaces
     order: 2
     title: Networks
+    subtitle: Guest, IoT, trusted and VLAN networks without replacing existing OpenWrt configuration
     renderer: yaml
+    sources:
+      status: { service: networks, action: status, parser: pipe }
     layout:
-      - type: legacy
-        component: networks
+      - { type: records, title: Configured Networks, source: status }
+      - type: form
+        title: Create Network
+        fields:
+          - { id: id, type: text, label: Network name, placeholder: guest }
+          - { id: type, type: select, label: Type, options: [guest, iot, lan, custom] }
+          - { id: cidr, type: text, label: Router address / prefix, placeholder: 192.168.30.1/24 }
+          - { id: vlan, type: number, label: VLAN ID, default: 0, min: 0, max: 4094 }
+          - { id: parent, type: text, label: Parent device }
+          - { id: dhcp, type: toggle, label: DHCP server, default: true }
+          - { id: internet, type: toggle, label: Internet access, default: true }
+        actions:
+          - { label: Create Network, service: networks, action: create, args: ['$field.id', '$field.type', '$field.cidr', '$field.vlan', '$field.parent', '$field.dhcp', '$field.internet'], style: primary, reload: true }
+      - type: form
+        title: Delete Mrouter-created Network
+        fields:
+          - { id: id, type: text, label: Network name }
+        actions:
+          - { label: Delete Network, service: networks, action: delete, args: ['$field.id'], style: danger, confirm: Delete this Mrouter-created network?, reload: true }
+
   dhcp-dns:
     route: admin/advanced/network-settings/dhcp
     order: 3
     title: DHCP & DNS
+    subtitle: DHCP scopes, reservations and encrypted-DNS visibility
     renderer: yaml
+    sources:
+      status: { service: dhcp, action: status, parser: pipe }
     layout:
-      - type: legacy
-        component: dhcp-dns
+      - { type: records, title: DHCP Scopes & Reservations, source: status }
+      - type: form
+        title: Update DHCP Scope
+        fields:
+          - { id: scope, type: text, label: Scope ID, placeholder: lan }
+          - { id: start, type: number, label: Start offset }
+          - { id: limit, type: number, label: Addresses }
+          - { id: lease, type: text, label: Lease time, placeholder: 12h }
+          - { id: enabled, type: toggle, label: Enabled, default: true }
+        actions:
+          - { label: Save Scope, service: dhcp, action: scope-save, args: ['$field.scope', '$field.start', '$field.limit', '$field.lease', '$field.enabled'], reload: true }
+      - type: form
+        title: Add Reservation
+        fields:
+          - { id: mac, type: text, label: MAC address }
+          - { id: ip, type: text, label: IP address }
+          - { id: name, type: text, label: Name }
+        actions:
+          - { label: Add Reservation, service: dhcp, action: add-reservation, args: ['$field.mac', '$field.ip', '$field.name'], style: primary, reload: true }
+      - type: form
+        title: Delete Reservation
+        fields:
+          - { id: id, type: text, label: Reservation ID }
+        actions:
+          - { label: Delete Reservation, service: dhcp, action: delete-reservation, args: ['$field.id'], style: danger, confirm: Delete this reservation?, reload: true }
+
   firewall:
     route: admin/advanced/network-settings/firewall
     order: 4
     title: Firewall
+    subtitle: Zones, forwarding and port-forward visibility
     renderer: yaml
+    sources:
+      status: { service: firewall, action: status, parser: pipe }
     layout:
-      - type: legacy
-        component: firewall-modern
+      - { type: records, title: Firewall Configuration, source: status }
+
   routing:
     route: admin/advanced/network-settings/routing
     order: 5
     title: Routing
+    subtitle: Default route and static routes
     renderer: yaml
+    sources:
+      snapshot: { service: advanced, action: snapshot, parser: pipe }
     layout:
-      - type: legacy
-        component: routing-modern
+      - { type: records, title: Default & Static Routes, source: snapshot, tags: [DEFAULT, ROUTE] }
+
   traffic-control:
     route: admin/advanced/network-settings/sqm
     order: 6
     title: Traffic Control
+    subtitle: CAKE/SQM bandwidth control
     renderer: yaml
+    sources:
+      snapshot: { service: advanced, action: snapshot, parser: pipe }
     layout:
-      - type: legacy
-        component: traffic-control
+      - { type: records, title: Current SQM Queues, source: snapshot, tags: [SQM] }
+      - type: form
+        title: Configure SQM
+        fields:
+          - { id: enabled, type: toggle, label: Enabled, default: true }
+          - { id: interface, type: text, label: Interface, placeholder: eth1 }
+          - { id: download, type: number, label: Download kbit/s }
+          - { id: upload, type: number, label: Upload kbit/s }
+          - { id: profile, type: select, label: Profile, options: [balanced, gaming, streaming] }
+        actions:
+          - { label: Apply Traffic Control, service: advanced, action: sqm-save, args: ['$field.enabled', '$field.interface', '$field.download', '$field.upload', '$field.profile'], style: primary, reload: true }
+
   diagnostics:
     route: admin/advanced/network-settings/diagnostics
     order: 7
     title: Diagnostics
+    subtitle: Connectivity and DNS checks
     renderer: yaml
+    sources:
+      selftest: { service: advanced, action: diagnostics, args: [selftest], parser: pipe }
     layout:
-      - type: legacy
-        component: diagnostics-modern
+      - { type: records, title: Router Self-Test, source: selftest }
+      - type: form
+        title: Run Diagnostic
+        fields:
+          - { id: type, type: select, label: Test, options: [ping, ping6, trace, dns, port] }
+          - { id: target, type: text, label: Target }
+          - { id: extra, type: text, label: Extra / port / DNS server }
+        actions:
+          - { label: Run, service: advanced, action: diagnostics, args: ['$field.type', '$field.target', '$field.extra'], style: primary }
+
   multiwan:
     route: admin/advanced/network-settings/multiwan
     order: 8
     title: Multi-WAN
+    subtitle: WAN quality, primary/secondary uplinks and failover state
     renderer: yaml
+    sources:
+      status: { service: wan, action: status, parser: pipe }
     layout:
-      - type: legacy
-        component: multiwan
+      - { type: records, title: Multi-WAN & Quality, source: status }
+
   device-settings:
     route: admin/advanced/administration/system
     order: 1
     title: Device Settings
+    subtitle: Identity and timezone
     renderer: yaml
+    sources:
+      snapshot: { service: advanced, action: snapshot, parser: pipe }
     layout:
-      - type: legacy
-        component: device-settings
+      - { type: records, title: Current Device Settings, source: snapshot, tags: [SYS] }
+      - type: form
+        title: General
+        fields:
+          - { id: hostname, type: text, label: Device name }
+          - { id: timezone, type: select, label: Timezone, options: [Europe/London, Europe/Berlin, America/New_York, America/Los_Angeles, UTC] }
+        actions:
+          - { label: Save Device Settings, service: advanced, action: system-save, args: ['$field.hostname', '$field.timezone'], style: primary, reload: true }
+
   admin-password:
     route: admin/advanced/administration/password
     order: 2
     title: Administrator Account
+    subtitle: Root administrator password status
     renderer: yaml
+    sources:
+      snapshot: { service: advanced, action: snapshot, parser: pipe }
     layout:
-      - type: legacy
-        component: admin-password
+      - { type: records, title: Account Security, source: snapshot, tags: [PASS] }
+      - type: notice
+        text: Password changes remain protected by the OpenWrt root account. Private credentials are never written into page YAML.
+
   admin-ssh:
     route: admin/advanced/administration/ssh
     order: 3
     title: SSH Access
+    subtitle: Dropbear access, port and password authentication
     renderer: yaml
+    sources:
+      snapshot: { service: advanced, action: snapshot, parser: pipe }
     layout:
-      - type: legacy
-        component: admin-ssh
+      - { type: records, title: SSH Status, source: snapshot, tags: [SSH] }
+      - type: form
+        title: SSH Settings
+        fields:
+          - { id: enabled, type: toggle, label: Enable SSH, default: true }
+          - { id: port, type: number, label: Port, default: 22, min: 1, max: 65535 }
+          - { id: password_auth, type: select, label: Password authentication, options: [on, off] }
+        actions:
+          - { label: Save SSH, service: advanced, action: ssh-save, args: ['$field.enabled', '$field.port', '$field.password_auth'], style: primary, reload: true }
+
   admin-sshkeys:
     route: admin/advanced/administration/sshkeys
     order: 4
     title: SSH Keys
+    subtitle: Trusted SSH public-key status
     renderer: yaml
+    sources:
+      keys: { service: advanced, action: keys, parser: pipe }
     layout:
-      - type: legacy
-        component: admin-sshkeys
+      - { type: records, title: Authorized Keys, source: keys }
+      - { type: notice, text: Mrouter never displays or stores SSH private keys. }
+
   admin-web:
     route: admin/advanced/administration/web
     order: 5
     title: Web Access
+    subtitle: HTTP/HTTPS listener and redirect state
     renderer: yaml
+    sources:
+      snapshot: { service: advanced, action: snapshot, parser: pipe }
     layout:
-      - type: legacy
-        component: admin-web
+      - { type: records, title: Web Interface, source: snapshot, tags: [WEB] }
+
   admin-startup:
     route: admin/advanced/administration/startup
     order: 6
     title: Startup & Services
+    subtitle: Enabled and running system services
     renderer: yaml
+    sources:
+      snapshot: { service: advanced, action: snapshot, parser: pipe }
     layout:
-      - type: legacy
-        component: admin-startup
+      - { type: records, title: Services, source: snapshot, tags: [SERVICE], columns: [Service, Enabled, Running] }
+      - type: form
+        title: Service Action
+        fields:
+          - { id: service, type: text, label: Service }
+          - { id: action, type: select, label: Action, options: [start, stop, restart, enable, disable] }
+        actions:
+          - { label: Apply Service Action, service: advanced, action: service-action, args: ['$field.service', '$field.action'], reload: true }
+
   admin-scheduled:
     route: admin/advanced/administration/scheduled
     order: 7
     title: Scheduled Tasks
+    subtitle: Root cron schedule visibility
     renderer: yaml
+    sources:
+      snapshot: { service: advanced, action: snapshot, parser: pipe }
     layout:
-      - type: legacy
-        component: admin-scheduled
+      - { type: records, title: Scheduled Tasks, source: snapshot, tags: [CRON] }
+
   admin-backup:
     route: admin/advanced/administration/backup
     order: 8
     title: Backup & Firmware
+    subtitle: Protect configuration before upgrades or major changes
     renderer: yaml
     layout:
-      - type: legacy
-        component: admin-backup
+      - { type: card, title: Configuration Backup, text: Create a sysupgrade-compatible backup before major changes. }
+      - { type: card, title: Firmware Upgrade, text: Full firmware upgrades are for base, kernel or image changes; package-first upgrades remain preferred for Mrouter UI and services. }
+      - { type: notice, text: Create a backup or VM snapshot and confirm the LAN address before any major change. }
+
   health:
     route: admin/advanced/system-health
     order: 25
     title: System Health
+    subtitle: CPU, memory, storage and system state
     renderer: yaml
+    sources:
+      health: { service: status-health, action: status, parser: pipe }
     layout:
-      - type: legacy
-        component: health
+      - { type: records, title: Health Metrics, source: health }
+
   logs:
     route: admin/advanced/system-log
     order: 30
     title: System Log
+    subtitle: Recent OpenWrt system log entries
     renderer: yaml
+    sources:
+      logs: { service: advanced, action: logs, parser: lines }
     layout:
-      - type: legacy
-        component: logs-modern
+      - { type: code, title: Recent Log, source: logs }
+
   processes:
     route: admin/advanced/processes
     order: 31
     title: Processes
+    subtitle: Running processes on the router
     renderer: yaml
+    sources:
+      processes: { service: advanced, action: processes, parser: lines }
     layout:
-      - type: legacy
-        component: processes-modern
+      - { type: code, title: Process List, source: processes }
+
   support:
     route: admin/advanced/support
     order: 35
     title: Support Bundle
+    subtitle: Local diagnostics and support information
     renderer: yaml
+    sources:
+      support: { service: support, action: status, parser: pipe }
     layout:
-      - type: legacy
-        component: support
+      - { type: records, title: Support Status, source: support }
+      - type: actions
+        items:
+          - { label: Refresh Support Data, service: support, action: refresh, style: primary, reload: true }
+
   terminal:
     route: admin/advanced/terminal
     order: 40
     title: Terminal
+    subtitle: Local router shell access
     renderer: yaml
     layout:
-      - type: legacy
-        component: terminal
+      - { type: notice, text: Terminal access is intentionally isolated from YAML actions. The terminal frontend must use the authenticated ttyd service rather than arbitrary shell commands in page YAML. }
+
   packages:
     route: admin/advanced/packages
     order: 60
     title: Package Manager
+    subtitle: Installed OpenWrt packages
     renderer: yaml
+    sources:
+      packages: { service: advanced, action: packages, parser: lines }
     layout:
-      - type: legacy
-        component: packages-modern
+      - { type: code, title: Installed Packages, source: packages }
+      - { type: notice, text: Package installation and removal will use a dedicated validated package action instead of arbitrary shell commands. }
+
   ui-designer:
     route: admin/advanced/ui-designer
     order: 0
     title: Mrouter UI Designer
     subtitle: Visual and YAML interface customisation
     renderer: yaml
+    sources:
+      appearance: { service: ui-config, action: status, parser: pipe, fields: [accent, density, sidebar_width, content_max_width, form_max_width, card_radius, compact_forms] }
     layout:
-      - type: legacy
-        component: ui-designer
+      - type: form
+        title: Appearance
+        fields:
+          - { id: accent, type: colour, label: Accent colour, default_from: appearance.accent }
+          - { id: density, type: select, label: Density, options: [compact, comfortable], default_from: appearance.density }
+          - { id: sidebar, type: number, label: Sidebar width, min: 180, max: 320, default_from: appearance.sidebar_width }
+          - { id: content, type: number, label: Content width, min: 900, max: 2200, default_from: appearance.content_max_width }
+          - { id: form, type: number, label: Form control width, min: 220, max: 640, default_from: appearance.form_max_width }
+          - { id: radius, type: number, label: Card radius, min: 0, max: 28, default_from: appearance.card_radius }
+          - { id: compact, type: toggle, label: Compact forms, default_from: appearance.compact_forms }
+        actions:
+          - { label: Apply Appearance, service: ui-config, action: set, args: ['$field.accent', '$field.density', '$field.sidebar', '$field.content', '$field.form', '$field.radius', '$field.compact'], style: primary, reload: true }
+      - { type: notice, text: Navigation, pages and login are YAML documents stored under /etc/mrouter/ui.d and validated before activation. }
