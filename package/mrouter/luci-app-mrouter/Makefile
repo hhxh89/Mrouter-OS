@@ -16,7 +16,7 @@ define Package/luci-app-mrouter
 endef
 
 define Package/luci-app-mrouter/description
- Modern Mrouter LuCI package interface for Internet, clients, wireless, VPN, protection, services, events and advanced network administration.
+ Native YAML-driven Mrouter-OS management interface for Internet, clients, wireless, VPN, protection, services, events and advanced administration.
 endef
 
 define Build/Compile
@@ -25,6 +25,9 @@ endef
 define Package/luci-app-mrouter/install
 	$(INSTALL_DIR) $(1)/www
 	$(CP) ./htdocs/* $(1)/www/
+	# Old handwritten LuCI views remain in source temporarily as migration reference only.
+	# They are deliberately excluded from the APK; every shipped Mrouter route is generated from YAML.
+	rm -rf $(1)/www/luci-static/resources/view/mrouter
 	$(INSTALL_DIR) $(1)/
 	$(CP) ./root/* $(1)/
 endef
