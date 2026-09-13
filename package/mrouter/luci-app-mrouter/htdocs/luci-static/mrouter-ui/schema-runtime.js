@@ -1,0 +1,30 @@
+(function(g){
+'use strict';
+var BASE='/luci-static/mrouter-ui/pages.json',USER='/luci-static/mrouter-ui/user-pages.json',BRIDGE='/usr/libexec/mrouter-ui-action';
+function getJSON(u){return fetch(u,{cache:'no-store'}).then(function(r){return r.ok?r.json():{};}).catch(function(){return{};});}
+function merge(a,b){var o={},k;for(k in(a||{}))o[k]=a[k];for(k in(b||{}))o[k]=b[k];return o;}
+function E0(tag,cls,text){var n=document.createElement(tag);if(cls)n.className=cls;if(text!=null)n.textContent=String(text);return n;}
+function exec(fs,spec,args){spec=spec||{};var p=[spec.service||'',spec.action||'status'].concat(args||spec.args||[]);return fs.exec(BRIDGE,p).then(function(r){if(r.code)throw new Error((r.stderr||r.stdout||'Action failed').trim());return(r.stdout||'').trim();});}
+function parse(raw,spec){spec=spec||{};if(spec.parser==='pipe'){var line=String(raw||'').split(/\r?\n/)[0]||'',v=line.split('|'),o={};(spec.fields||[]).forEach(function(k,i){o[k]=v[i+((spec.skip_tag===false)?0:1)]||'';});return o;}return{raw:raw};}
+function loadLegacy(block){return Promise.resolve(L.require('view.mrouter.'+block.component)).then(function(mod){return Promise.resolve(typeof mod.load==='function'?mod.load.call(mod):null).then(function(data){return{mod:mod,data:data};});});}
+function decorate(node,cfg){if(!node||!cfg)return node;var h=node.querySelector&&node.querySelector('.m-page-title h2');if(h&&cfg.title)h.textContent=cfg.title;var s=node.querySelector&&node.querySelector('.m-page-title .m-subtitle');if(s&&cfg.subtitle!=null)s.textContent=cfg.subtitle;(cfg.hide_selectors||[]).forEach(function(sel){try{node.querySelectorAll(sel).forEach(function(x){x.style.display='none';});}catch(e){}});return node;}
+function fieldNode(f){var input;if(f.type==='select'){input=E0('select','m-ios-input');(f.options||[]).forEach(function(o){var op=E0('option','',typeof o==='object'?o.label:o);op.value=typeof o==='object'?o.value:o;input.appendChild(op);});}else if(f.type==='toggle'){input=E0('input');input.type='checkbox';input.checked=!!f.default;}else if(f.type==='textarea'){input=E0('textarea','m-ios-input');input.rows=f.rows||4;input.value=f.default||'';}else{input=E0('input','m-ios-input');input.type=f.type==='password'?'password':(f.type==='number'?'number':'text');if(f.default!=null)input.value=f.default;if(f.placeholder)input.placeholder=f.placeholder;}input.dataset.mrField=f.id;var l=E0('label','mr-schema-field');l.appendChild(E0('span','',f.label||f.id));l.appendChild(input);return l;}
+function formValues(node){var o={};node.querySelectorAll('[data-mr-field]').forEach(function(x){o[x.dataset.mrField]=x.type==='checkbox'?(x.checked?'1':'0'):x.value;});return o;}
+function resolveArgs(list,vals){return(list||[]).map(function(x){var m=String(x).match(/^\$field\.([A-Za-z0-9_-]+)$/);return m?(vals[m[1]]==null?'':String(vals[m[1]])):String(x);});}
+function renderBlock(block,state,fs,ui){
+ if(block.visible===false)return document.createDocumentFragment();
+ if(block.type==='legacy'){var l=state.legacy&&state.legacy[block.component];return l?decorate(l.mod.render.call(l.mod,l.data),state.cfg):E0('div','m-info-banner','Component unavailable: '+block.component);}
+ if(block.type==='heading')return E0(block.level===2?'h2':'h3','mr-schema-heading',block.text||'');
+ if(block.type==='notice')return E0('div','m-info-banner',block.text||'');
+ if(block.type==='stats'){var grid=E0('div','m-stats-grid');(block.items||[]).forEach(function(it){var c=E0('div','m-stat-card'),v=it.value;if(it.value_from&&state.sources[block.id])v=state.sources[block.id][it.value_from];c.appendChild(E0('span','',it.label||''));c.appendChild(E0('strong','',v==null?'—':v));grid.appendChild(c);});return grid;}
+ if(block.type==='card'){var c2=E0('div','m-app-card');if(block.title)c2.appendChild(E0('h3','',block.title));if(block.text)c2.appendChild(E0('p','',block.text));return c2;}
+ if(block.type==='form'){
+   var sec=E0('div','m-section mr-schema-form');if(block.title)sec.appendChild(E0('h3','',block.title));var grid2=E0('div','m-form-grid');(block.fields||[]).forEach(function(f){grid2.appendChild(fieldNode(f));});sec.appendChild(grid2);
+   var acts=E0('div','cbi-page-actions');(block.actions||[]).forEach(function(a){var b=E0('button','btn cbi-button '+(a.style==='primary'?'cbi-button-apply':''),a.label||a.action||'Apply');b.type='button';b.addEventListener('click',function(){var vals=formValues(sec),args=resolveArgs(a.args,vals);b.disabled=true;exec(fs,a,args).then(function(out){if(ui&&ui.addNotification)ui.addNotification(null,E0('p','',a.success||'Saved.'),'info');if(a.reload)setTimeout(function(){location.reload();},200);}).catch(function(e){if(ui&&ui.addNotification)ui.addNotification(null,E0('p','',e.message),'error');}).finally(function(){b.disabled=false;});});acts.appendChild(b);});sec.appendChild(acts);return sec;
+ }
+ return E0('div','m-info-banner','Unsupported YAML block: '+(block.type||'unknown'));
+}
+async function load(pageId,fs){var all=await Promise.all([getJSON(BASE),getJSON(USER)]),base=(all[0].pages||{})[pageId]||{},over=(all[1].pages||{})[pageId]||{},cfg=merge(base,over),state={cfg:cfg,legacy:{},sources:{}};var jobs=[];(cfg.layout||[]).forEach(function(b){if(b.type==='legacy')jobs.push(loadLegacy(b).then(function(x){state.legacy[b.component]=x;}));if(b.source)jobs.push(exec(fs,b.source).then(function(raw){state.sources[b.id||('b'+jobs.length)]=parse(raw,b.source);}).catch(function(e){state.sources[b.id||('b'+jobs.length)]={error:e.message};}));});await Promise.all(jobs);return state;}
+function render(pageId,state,fs,ui){var cfg=state.cfg||{},layout=cfg.layout||[];if(layout.length===1&&layout[0].type==='legacy')return decorate(renderBlock(layout[0],state,fs,ui),cfg);var root=E0('div','mrouter-page mr-schema-page');var title=E0('div','m-page-title'),box=E0('div');box.appendChild(E0('h2','',cfg.title||pageId));if(cfg.subtitle)box.appendChild(E0('div','m-subtitle',cfg.subtitle));title.appendChild(box);root.appendChild(title);layout.forEach(function(b){root.appendChild(renderBlock(b,state,fs,ui));});return root;}
+g.MrouterSchemaRuntime={load:load,render:render,exec:exec};
+})(window);
