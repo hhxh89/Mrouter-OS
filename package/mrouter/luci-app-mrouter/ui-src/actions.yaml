@@ -111,6 +111,9 @@ services:
   terminal:
     helper: /usr/libexec/mrouter-terminal
     mode: readwrite
+  account:
+    helper: /usr/libexec/mrouter-account
+    mode: readwrite
   advanced:
     helper: /usr/libexec/mrouter-advanced
     mode: readwrite
