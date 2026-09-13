@@ -4,6 +4,7 @@
 {% endif %}
 </div>
 </div>
+<script src="/luci-static/mrouter/ui-unlock.js?v=1.1.0"></script>
 <script>L.require('menu-material')</script>
 </body>
 </html>
