@@ -6,6 +6,7 @@ shift || true
 shift || true
 case "$SERVICE" in
   internet) H=/usr/libexec/mrouter-internet-info ;;
+  internet-summary) H=/usr/libexec/mrouter-internet-summary ;;
   traffic) H=/usr/libexec/mrouter-traffic-live ;;
   client-data) H=/usr/libexec/mrouter-client-data ;;
   iot-info) H=/usr/libexec/mrouter-iot-info ;;
@@ -48,7 +49,7 @@ esac
 case "$ACTION" in *[!A-Za-z0-9_.:-]*|'') echo 'ERROR|Invalid action'; exit 2;; esac
 
 case "$SERVICE:$ACTION" in
-  internet:refresh|internet:status|traffic:status|client-data:snapshot|client-data:snapshot-iot|iot-info:status|\
+  internet:refresh|internet:status|internet-summary:status|traffic:status|client-data:snapshot|client-data:snapshot-iot|iot-info:status|\
   clients:status|clients:alias|clients:quarantine|clients:group-save|clients:group-delete|client-action:block|client-action:reserve|\
   wireless:status|wireless:add-ssid|wireless:radio-save|wireless:ssid-save|wireless:delete-ssid|\
   networks:status|networks:create|networks:delete|networks:backup|events:status|events:settings|events:clear|\
