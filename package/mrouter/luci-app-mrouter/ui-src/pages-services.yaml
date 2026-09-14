@@ -34,6 +34,16 @@ pages:
       title: Mrouter DNS
       items:
       - { label: Use Mrouter DNS, service: services, action: dns-mrouter, style: secondary, confirm: 'Switch client DNS back to Mrouter-managed DNS?', reload: true }
+  adguard:
+    sources:
+      status: { service: adguard, action: status, parser: pipe }
+    layout:
+    - { type: records, title: Service Status, source: status }
+    - type: actions
+      items:
+      - { label: Start, service: adguard, action: start, style: primary, reload: true }
+      - { label: Stop, service: adguard, action: stop, style: danger, confirm: 'Stop AdGuard Home?', reload: true }
+      - { label: Restart, service: adguard, action: restart, style: secondary, reload: true }
   ddns:
     sources:
       status: { service: ddns, action: status, parser: pipe }
