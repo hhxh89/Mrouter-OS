@@ -65,7 +65,7 @@ def validate_ids(pages,actions,schema):
     if 'legacy' in allowed_blocks:
         raise SystemExit('schema.yaml: legacy block type is forbidden')
 
-    def validate_obj(obj,pid,ctx='block'):
+    def validate_obj(obj,pid,ctx='generic'):
         if isinstance(obj,dict):
             typ=obj.get('type')
             if typ:
@@ -74,8 +74,9 @@ def validate_ids(pages,actions,schema):
                 if ctx == 'field':
                     if typ not in allowed_fields:
                         raise SystemExit(f'{pid}: unsupported field type {typ}')
-                elif typ not in allowed_blocks:
-                    raise SystemExit(f'{pid}: unsupported block type {typ}')
+                elif ctx == 'block':
+                    if typ not in allowed_blocks:
+                        raise SystemExit(f'{pid}: unsupported block type {typ}')
             if 'service' in obj and ('action' in obj or 'args' in obj):
                 if obj.get('service') not in services:
                     raise SystemExit(f'{pid}: action uses unregistered service {obj.get("service")}')
@@ -83,8 +84,11 @@ def validate_ids(pages,actions,schema):
                 if k == 'fields' and isinstance(v,list):
                     for item in v:
                         validate_obj(item,pid,'field')
+                elif k == 'layout' and isinstance(v,list):
+                    for item in v:
+                        validate_obj(item,pid,'block')
                 else:
-                    validate_obj(v,pid,ctx)
+                    validate_obj(v,pid,'generic')
         elif isinstance(obj,list):
             for v in obj:
                 validate_obj(v,pid,ctx)
@@ -97,7 +101,8 @@ def validate_ids(pages,actions,schema):
         if p.get('renderer')!='yaml': raise SystemExit(f'{pid}: renderer must be yaml')
         layout=p.get('layout') or []
         if not isinstance(layout,list) or not layout: raise SystemExit(f'{pid}: layout must be a non-empty list')
-        validate_obj(layout,pid,'block')
+        for item in layout:
+            validate_obj(item,pid,'block')
         for sid,spec in (p.get('sources') or {}).items():
             if spec.get('service') not in services: raise SystemExit(f'{pid}: source {sid} uses unregistered service {spec.get("service")}')
 
@@ -111,9 +116,6 @@ def main():
     validate_ids(pages,docs['actions'],docs['schema'])
     WEB.mkdir(parents=True,exist_ok=True); VIEWS.mkdir(parents=True,exist_ok=True); MENU.parent.mkdir(parents=True,exist_ok=True); DEFAULTS.mkdir(parents=True,exist_ok=True)
     for n,obj in docs.items(): dump_json(WEB/(n+'.json'),obj)
-    # The UI Designer must edit the actual effective page document, not the
-    # pre-overlay base file. Keep source overlays separately for development,
-    # but publish the fully merged pages YAML as the packaged default.
     for n in DOCS:
         if n == 'pages':
             dump_yaml(DEFAULTS/'pages.yaml', pages)
